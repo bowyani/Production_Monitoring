@@ -13,7 +13,11 @@ kpiRouter.get("/kpi/summary", async (req, res) => {
     ? new Date(String(req.query.from))
     : new Date(to.getTime() - 24 * 60 * 60 * 1000);
 
-  const machines = await prisma.machine.findMany({ where: { isActive: true } });
+  // MANUAL machines have no status-event history (no telemetry to derive it
+  // from), so Availability would come out as a misleading 0% rather than
+  // "unknown". Excluding them entirely — surfaced explicitly in the
+  // dashboard's blind-spot banner — is more honest than a fake number.
+  const machines = await prisma.machine.findMany({ where: { isActive: true, dataSource: "MQTT" } });
   const results = await Promise.all(machines.map((m) => computeMachineKpi(m, from, to)));
 
   const windowHours = (to.getTime() - from.getTime()) / 3_600_000;

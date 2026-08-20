@@ -10,12 +10,19 @@ datasource db {
 model Machine {
   machineId        String    @id @map("machine_id")
   machineName      String    @map("machine_name")
+  machineModel     String?   @map("machine_model")
   status           String    @default("OFFLINE")
   lastSeenAt       DateTime? @map("last_seen_at")
   isActive         Boolean   @default(true) @map("is_active")
+  // "MQTT" = connected machine/simulator publishing telemetry directly.
+  // "MANUAL" = legacy machine with no data connection — history comes only
+  // from CSV import (see GAP_ANALYSIS §1.4 "manual data entry fallback").
+  dataSource       String    @default("MQTT") @map("data_source")
   ratedPowerKw     Decimal?  @map("machine_rated_power_kw") @db.Decimal(8, 2)
   laborCostPerHour Decimal?  @map("labor_cost_per_hour") @db.Decimal(10, 2)
   targetCycleTimeSec Decimal? @map("target_cycle_time_sec") @db.Decimal(6, 2)
+  maintenanceIntervalHours Decimal? @map("maintenance_interval_hours") @db.Decimal(8, 2)
+  lastMaintenanceAt DateTime @default(now()) @map("last_maintenance_at")
   createdAt        DateTime  @default(now()) @map("created_at")
   createdBy        String?   @map("created_by")
 
@@ -90,4 +97,22 @@ model Alarm {
 
   @@index([machineId, alarmTimestamp])
   @@map("alarms")
+}
+
+// Programmatic log of who changed what in Admin (machine config, activation,
+// maintenance, CSV import) — answers Direction.md §4.2 "มี Log สำหรับตรวจสอบ
+// การทำงานเบื้องต้น". No auth yet, so `actor` is a free-text label; once auth
+// lands this becomes the authenticated user id.
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  actor      String
+  action     String
+  targetType String   @map("target_type")
+  targetId   String   @map("target_id")
+  detail     String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([targetType, targetId, createdAt])
+  @@index([createdAt])
+  @@map("audit_log")
 }

@@ -1,3 +1,5 @@
+name: production_monitoring
+
 services:
   mosquitto:
     image: eclipse-mosquitto:2
@@ -31,6 +33,16 @@ services:
       MQTT_BROKER_URL: mqtt://mosquitto:1883
       BACKEND_PORT: 3000
       BACKEND_WATCHDOG_OFFLINE_THRESHOLD_SEC: ${BACKEND_WATCHDOG_OFFLINE_THRESHOLD_SEC}
+      # Lets Admin add/activate/deactivate a machine by controlling its
+      # simulator container directly — see backend/src/docker/simulatorManager.ts.
+      # Prototype-only convenience: a real PLC isn't a container we can start/stop.
+      DOCKER_MANAGEMENT_ENABLED: "true"
+      DOCKER_NETWORK: production_monitoring_default
+      SIMULATOR_IMAGE: production-monitoring-simulator:latest
+      SIMULATOR_MQTT_BROKER_URL: mqtt://mosquitto:1883
+      SIMULATOR_BACKEND_API_URL: http://backend:3000/api/v1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,6 +67,7 @@ services:
 
   simulator-01:
     build: ./simulator
+    image: production-monitoring-simulator:latest
     environment:
       MACHINE_ID: IMM-01
       MACHINE_NAME: Injection Molding Machine 01
@@ -66,6 +79,7 @@ services:
 
   simulator-02:
     build: ./simulator
+    image: production-monitoring-simulator:latest
     environment:
       MACHINE_ID: IMM-02
       MACHINE_NAME: Injection Molding Machine 02
@@ -77,6 +91,7 @@ services:
 
   simulator-03:
     build: ./simulator
+    image: production-monitoring-simulator:latest
     environment:
       MACHINE_ID: IMM-03
       MACHINE_NAME: Injection Molding Machine 03

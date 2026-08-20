@@ -86,7 +86,7 @@ docker compose up -d
 
 คำสั่งเดียวจะสร้างและรันครบทั้งระบบ: Mosquitto, PostgreSQL (migrate schema อัตโนมัติ), Backend, Dashboard, และ Machine Simulator 3 เครื่อง (`IMM-01`, `IMM-02`, `IMM-03`) ที่ลงทะเบียนตัวเองและเริ่ม publish ข้อมูลทันที ไม่ต้องตั้งค่าอะไรเพิ่ม
 
-- Dashboard: http://localhost:5173 (Operator / History / Executive KPI / Admin)
+- Dashboard: http://localhost:5173 (Operator / History / Executive KPI / Admin / Import / Audit Log / System Health)
 - Backend REST API: http://localhost:3000/api/v1
 - Backend health check: http://localhost:3000/health
 
@@ -97,13 +97,7 @@ docker compose down                  # หยุดระบบ (เก็บข
 docker compose down -v               # หยุด + ล้างข้อมูลทั้งหมด (เริ่มใหม่จากศูนย์)
 ```
 
-**เพิ่มเครื่องจักรเครื่องที่ 4+**: ลงทะเบียนผ่านหน้า Admin ก่อน (แค่สร้าง record ยังไม่มีข้อมูลไหลเข้า) แล้วรัน simulator instance ผูกกับ ID นั้น — คำสั่งเต็มอยู่ในหน้า Admin เอง เช่น
-```bash
-docker compose run -d --rm --name simulator-IMM-04 \
-  -e MACHINE_ID=IMM-04 -e MACHINE_NAME="Injection Molding Machine 04" \
-  -e MQTT_BROKER_URL=mqtt://mosquitto:1883 -e BACKEND_API_URL=http://backend:3000/api/v1 \
-  simulator-01
-```
+**เพิ่มเครื่องจักรเครื่องที่ 4+ (เช่นตอน Live Demo)**: ลงทะเบียนผ่านหน้า Admin แล้วจบ — ไม่ต้องรัน `docker compose run` เองอีกต่อไป Backend ควบคุม container ของ simulator โดยตรงผ่าน Docker socket ที่ mount เข้ามา (`backend/src/docker/simulatorManager.ts`) เครื่องใหม่จะขึ้นสถานะ RUN ภายในไม่กี่วินาที และ Deactivate ในหน้า Admin จะสั่งหยุด container นั้นจริงๆ ไม่ใช่แค่เพิกเฉยข้อมูลที่ยังไหลเข้ามา — รายละเอียดเหตุผลอยู่ใน [Design Rationale](#design-rationale--เหตุผลเชิงลึกเทียบกับทางเลือกอื่น)
 
 ---
 
@@ -126,15 +120,16 @@ docker compose run -d --rm --name simulator-IMM-04 \
 
 ## Database Structure
 
-PostgreSQL, 5 ตาราง (normalize ไม่ denormalize — join ได้ถูกต้อง ขยาย field ง่ายกว่าระยะยาว):
+PostgreSQL, 6 ตาราง (normalize ไม่ denormalize — join ได้ถูกต้อง ขยาย field ง่ายกว่าระยะยาว):
 
 | ตาราง | ใช้เก็บ | Field สำคัญ |
 |---|---|---|
-| `machines` | รายชื่อเครื่องจักรที่ลงทะเบียน + สถานะล่าสุด (cache) | `machine_id` (PK), `status`, `last_seen_at`, `is_active`, `machine_rated_power_kw`, `labor_cost_per_hour`, `target_cycle_time_sec` |
+| `machines` | รายชื่อเครื่องจักรที่ลงทะเบียน + สถานะล่าสุด (cache) | `machine_id` (PK), `machine_model`, `status`, `data_source` (`MQTT`/`MANUAL`), `last_seen_at`, `is_active`, `machine_rated_power_kw`, `labor_cost_per_hour`, `target_cycle_time_sec`, `maintenance_interval_hours`, `last_maintenance_at` |
 | `machine_telemetry` | Time-series ของทุก tick ที่ส่งเข้ามา | `machine_id` (FK), `timestamp`, `status`, `cycle_time_sec`, `shot_count`, `injection_pressure_bar`, `barrel_temperature_c` |
-| `machine_status_events` | ประวัติการเปลี่ยนสถานะทุกครั้ง (audit trail) | `machine_id` (FK), `from_status`, `to_status`, `changed_at` |
-| `production_jobs` | งานผลิตแต่ละ Job | `job_number` (PK), `machine_id` (FK), `product_code`, `mold_id`, `recipe_id`, `good_qty`, `reject_qty`, `startup_scrap_qty`, `status` |
+| `machine_status_events` | ประวัติการเปลี่ยนสถานะทุกครั้ง (ใช้คำนวณ Availability และ running-hours-since-maintenance ด้วย) | `machine_id` (FK), `from_status`, `to_status`, `changed_at` |
+| `production_jobs` | งานผลิตแต่ละ Job (จาก MQTT หรือ CSV import) | `job_number` (PK), `machine_id` (FK), `product_code`, `mold_id`, `recipe_id`, `good_qty`, `reject_qty`, `startup_scrap_qty`, `status` |
 | `alarms` | Alarm ที่เกิดขึ้น | `machine_id` (FK), `job_number` (FK nullable), `alarm_code`, `alarm_message`, `alarm_timestamp`, `cleared_timestamp` |
+| `audit_log` | Log การกระทำทุกครั้งในหน้า Admin (ตอบ Direction.md §4.2 "มี Log สำหรับตรวจสอบการทำงานเบื้องต้น") | `actor`, `action`, `target_type`, `target_id`, `detail` (JSON), `created_at` |
 
 Schema เต็ม: [`backend/prisma/schema.prisma`](backend/prisma/schema.prisma) — migration ทุกไฟล์ commit อยู่ใน `backend/prisma/migrations/` (generate แบบมีเลขลำดับ พร้อม track ประวัติอัตโนมัติผ่าน Prisma Migrate แทนการรัน SQL ALTER สดๆ) รัน rollback/ดูประวัติได้ปกติ
 
@@ -175,7 +170,12 @@ Prefix ทุก endpoint ด้วย `/api/v1/` เพื่อให้เพ
 | `GET /jobs/:jobNumber` | รายละเอียด Job + Alarm ที่เกิดระหว่างงานนั้น |
 | `GET /alarms/active` | Alarm ที่ active อยู่ทั้งโรงงาน |
 | `GET /kpi/summary?from=&to=` | OEE, Availability/Performance/Quality, Reject Rate, Est. Energy/Labor Cost |
-| `GET /admin/machines`, `POST /admin/machines`, `PATCH /admin/machines/:id` | ลงทะเบียน/แก้ไข/เปิด-ปิดเครื่องจักร |
+| `GET /admin/machines`, `POST /admin/machines`, `PATCH /admin/machines/:id` | ลงทะเบียน/แก้ไข/เปิด-ปิดเครื่องจักร (POST/PATCH ยังคุม simulator container ให้ด้วยถ้า `dataSource=MQTT`) |
+| `POST /admin/machines/:id/maintenance` | บันทึกว่าซ่อมบำรุงแล้ว (reset ตัวนับ running-hours-since-maintenance) |
+| `GET /admin/audit-log?targetId=&action=` | ประวัติการกระทำทุกครั้งในหน้า Admin |
+| `GET /admin/system-stats` | Row count/ขนาด DB/อัตราการไหลเข้าของข้อมูล แบบ real-time — ใช้ในหน้า System Health |
+| `POST /admin/import/jobs` | Import Job/Production data จาก CSV สำหรับเครื่องที่เชื่อมต่อไม่ได้ (`dataSource=MANUAL`) |
+| `GET /jobs` รองรับเพิ่ม `productCode=&status=&sort=&dir=` | Filter/sort ผลค้นหา Job (ใช้ในหน้า Operator) |
 | `WS /live` | push telemetry/job/alarm/status event แบบ real-time |
 
 ---
@@ -199,6 +199,8 @@ Prefix ทุก endpoint ด้วย `/api/v1/` เพื่อให้เพ
 **Migration tool แบบ versioned (up/down) แทนการรัน SQL ALTER สดตอน deploy** — ระบบที่รันคู่กับสายการผลิตจริง deploy พลาดมีต้นทุนสูง การมี rollback path ที่ทดสอบแล้วจึงจำเป็นกว่าเว็บทั่วไป ข้อเสีย: ต้องเรียนรู้ syntax ของ migration tool เพิ่ม
 
 **`schemaVersion` ใน payload + API versioning (`/api/v1/`) แทนการไม่ทำ versioning เลย** — โรงงานมีเครื่องจักรหลาย Generation ใช้งานพร้อมกันเป็นปกติ การันตีว่า consumer เดิมที่อ่าน payload v1 จะไม่พังเมื่อเพิ่ม field ใหม่ในอนาคตจึงสำคัญกว่าความเรียบง่ายตอนนี้
+
+**Backend คุม lifecycle ของ simulator container ตรงผ่าน Docker socket แทนให้ผู้ใช้รัน `docker compose run` เอง** — Direction.md ข้อ 7 ระบุว่ากรรมการอาจขอ "เพิ่มเครื่องจักร" กลาง demo และการ Deactivate ควรทำให้เครื่องเงียบจริง ไม่ใช่แค่ให้ backend เพิกเฉยข้อมูลที่ยังไหลเข้ามา วิธีนี้ mount `/var/run/docker.sock` เข้า backend container แล้วใช้ `dockerode` สั่ง create/start/stop container ของ simulator ตรงๆ **ข้อเสียที่ต้องพูดตรงๆ**: การ mount docker.sock ให้สิทธิ์ backend container ควบคุม Docker daemon ของ host ระดับเดียวกับ root — ยอมรับได้เพราะนี่คือ prototype รันบนเครื่อง dev เท่านั้น และทุก "เครื่องจักร" ในระบบนี้คือ container ที่เราคุมเองทั้งหมด **แนวทางนี้ใช้กับของจริงไม่ได้เลย** เพราะ PLC จริงไม่ใช่ container ที่สั่ง start/stop ได้ — เป็น convenience layer เฉพาะ prototype เท่านั้น ถ้า Docker ไม่พร้อมใช้งาน (`DOCKER_MANAGEMENT_ENABLED=false` หรือ mount ไม่ได้) ระบบยัง fallback กลับไปให้ลงทะเบียนเฉยๆ แล้วรอข้อมูลเข้าได้ตามปกติ ไม่ fail ทั้งระบบ
 
 ### Crosswalk: Design ตอบ Gap ข้อไหนบ้าง
 

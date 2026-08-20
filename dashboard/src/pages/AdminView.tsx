@@ -1,19 +1,24 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, type Machine } from "../lib/api";
 
 type EditState = {
   machineName: string;
+  machineModel: string;
   ratedPowerKw: string;
   laborCostPerHour: string;
   targetCycleTimeSec: string;
+  maintenanceIntervalHours: string;
 };
 
 function toEditState(m: Machine): EditState {
   return {
     machineName: m.machineName,
+    machineModel: m.machineModel ?? "",
     ratedPowerKw: m.ratedPowerKw?.toString() ?? "",
     laborCostPerHour: m.laborCostPerHour?.toString() ?? "",
     targetCycleTimeSec: m.targetCycleTimeSec?.toString() ?? "",
+    maintenanceIntervalHours: m.maintenanceIntervalHours?.toString() ?? "",
   };
 }
 
@@ -21,7 +26,10 @@ export default function AdminView() {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [machineId, setMachineId] = useState("");
   const [machineName, setMachineName] = useState("");
+  const [machineModel, setMachineModel] = useState("");
+  const [dataSource, setDataSource] = useState<"MQTT" | "MANUAL">("MQTT");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [edit, setEdit] = useState<EditState | null>(null);
 
@@ -34,10 +42,21 @@ export default function AdminView() {
   async function addMachine(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setNotice(null);
     try {
-      await api.adminCreateMachine({ machineId, machineName });
+      const result = await api.adminCreateMachine({ machineId, machineName, machineModel: machineModel || undefined, dataSource });
       setMachineId("");
       setMachineName("");
+      setMachineModel("");
+      if (dataSource === "MQTT") {
+        setNotice(
+          result.simulator?.ok
+            ? `Simulator container ${result.simulator.reused ? "reused" : "started"} for ${result.machineId} — it will show RUN/telemetry within a few seconds, no manual steps needed.`
+            : `Machine registered, but the simulator container couldn't be started automatically (${result.simulator?.reason ?? "Docker management unavailable"}). Start it manually if needed.`
+        );
+      } else {
+        setNotice(`Machine registered as MANUAL — no simulator, use the Import page to backfill its data.`);
+      }
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "failed to create machine");
@@ -45,7 +64,16 @@ export default function AdminView() {
   }
 
   async function toggleActive(m: Machine) {
-    await api.adminPatchMachine(m.machineId, { isActive: !m.isActive });
+    setNotice(null);
+    const result = await api.adminPatchMachine(m.machineId, { isActive: !m.isActive });
+    if (m.dataSource === "MQTT" && result.simulator && !result.simulator.ok) {
+      setNotice(`Status updated, but simulator container control failed: ${result.simulator.reason}`);
+    }
+    refresh();
+  }
+
+  async function logMaintenance(m: Machine) {
+    await api.adminLogMaintenance(m.machineId);
     refresh();
   }
 
@@ -58,9 +86,11 @@ export default function AdminView() {
     if (!edit) return;
     await api.adminPatchMachine(m.machineId, {
       machineName: edit.machineName,
+      machineModel: edit.machineModel === "" ? null : edit.machineModel,
       ratedPowerKw: edit.ratedPowerKw === "" ? null : Number(edit.ratedPowerKw),
       laborCostPerHour: edit.laborCostPerHour === "" ? null : Number(edit.laborCostPerHour),
       targetCycleTimeSec: edit.targetCycleTimeSec === "" ? null : Number(edit.targetCycleTimeSec),
+      maintenanceIntervalHours: edit.maintenanceIntervalHours === "" ? null : Number(edit.maintenanceIntervalHours),
     });
     setEditingId(null);
     setEdit(null);
@@ -73,11 +103,11 @@ export default function AdminView() {
 
       <section>
         <h2>Register New Machine</h2>
-        <form onSubmit={addMachine} style={{ display: "flex", gap: 8 }}>
+        <form onSubmit={addMachine} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <input
             value={machineId}
             onChange={(e) => setMachineId(e.target.value)}
-            placeholder="Machine ID (e.g. IMM-02)"
+            placeholder="Machine ID (e.g. IMM-04)"
             style={{ padding: 6 }}
             required
           />
@@ -88,19 +118,27 @@ export default function AdminView() {
             style={{ padding: 6 }}
             required
           />
+          <input
+            value={machineModel}
+            onChange={(e) => setMachineModel(e.target.value)}
+            placeholder="Model (e.g. Haitian MA1200)"
+            style={{ padding: 6 }}
+          />
+          <select value={dataSource} onChange={(e) => setDataSource(e.target.value as "MQTT" | "MANUAL")} style={{ padding: 6 }}>
+            <option value="MQTT">MQTT (connected / simulator)</option>
+            <option value="MANUAL">MANUAL (legacy — no connection)</option>
+          </select>
           <button type="submit">Add</button>
         </form>
         {error && <div style={{ color: "#cf222e" }}>{error}</div>}
-        <p style={{ fontSize: 13, color: "#57606a", maxWidth: 640 }}>
-          Registering a machine here only creates its record — it will show <strong>OFFLINE</strong>{" "}
-          until something actually publishes telemetry for its Machine ID over MQTT. In this prototype
-          that means starting a Simulator instance for it, e.g.:
+        {notice && <div style={{ color: "#1a7f37" }}>{notice}</div>}
+        <p style={{ fontSize: 13, color: "#57606a", maxWidth: 680 }}>
+          <strong>MQTT</strong> machines get a simulator container launched automatically (via the Docker
+          socket mounted into the backend) — telemetry starts flowing within seconds, no manual{" "}
+          <code>docker compose run</code> needed. <strong>MANUAL</strong> machines represent legacy
+          equipment that can't connect at all (GAP_ANALYSIS §1.4) — register it here, then backfill its
+          production history on the <Link to="/import">Import</Link> page.
         </p>
-        <pre style={{ background: "#f6f8fa", padding: 8, borderRadius: 6, fontSize: 12, maxWidth: 640 }}>
-          {`docker compose run -d --rm --name simulator-${machineId || "IMM-04"} \\\n  -e MACHINE_ID=${
-            machineId || "IMM-04"
-          } -e MACHINE_NAME="${machineName || "..."}" \\\n  -e MQTT_BROKER_URL=mqtt://mosquitto:1883 \\\n  -e BACKEND_API_URL=http://backend:3000/api/v1 \\\n  simulator-01`}
-        </pre>
       </section>
 
       <section>
@@ -109,12 +147,14 @@ export default function AdminView() {
           <thead>
             <tr style={{ textAlign: "left", borderBottom: "1px solid #d0d7de" }}>
               <th>ID</th>
-              <th>Name</th>
+              <th>Name / Model</th>
+              <th>Source</th>
               <th>Status</th>
               <th>Active</th>
               <th>Rated kW</th>
               <th>Labor $/hr</th>
               <th>Target Cycle (s)</th>
+              <th>Maintenance</th>
               <th></th>
             </tr>
           </thead>
@@ -127,16 +167,23 @@ export default function AdminView() {
                     <input
                       value={edit.machineName}
                       onChange={(e) => setEdit({ ...edit, machineName: e.target.value })}
-                      style={{ width: 140 }}
+                      style={{ width: 130, display: "block", marginBottom: 4 }}
+                    />
+                    <input
+                      value={edit.machineModel}
+                      onChange={(e) => setEdit({ ...edit, machineModel: e.target.value })}
+                      placeholder="model"
+                      style={{ width: 130 }}
                     />
                   </td>
+                  <td>{m.dataSource}</td>
                   <td>{m.status}</td>
                   <td>{m.isActive ? "yes" : "no"}</td>
                   <td>
                     <input
                       value={edit.ratedPowerKw}
                       onChange={(e) => setEdit({ ...edit, ratedPowerKw: e.target.value })}
-                      style={{ width: 70 }}
+                      style={{ width: 60 }}
                       inputMode="decimal"
                     />
                   </td>
@@ -144,7 +191,7 @@ export default function AdminView() {
                     <input
                       value={edit.laborCostPerHour}
                       onChange={(e) => setEdit({ ...edit, laborCostPerHour: e.target.value })}
-                      style={{ width: 70 }}
+                      style={{ width: 60 }}
                       inputMode="decimal"
                     />
                   </td>
@@ -152,8 +199,17 @@ export default function AdminView() {
                     <input
                       value={edit.targetCycleTimeSec}
                       onChange={(e) => setEdit({ ...edit, targetCycleTimeSec: e.target.value })}
-                      style={{ width: 70 }}
+                      style={{ width: 60 }}
                       inputMode="decimal"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      value={edit.maintenanceIntervalHours}
+                      onChange={(e) => setEdit({ ...edit, maintenanceIntervalHours: e.target.value })}
+                      style={{ width: 60 }}
+                      inputMode="decimal"
+                      placeholder="interval h"
                     />
                   </td>
                   <td style={{ display: "flex", gap: 4 }}>
@@ -164,15 +220,32 @@ export default function AdminView() {
               ) : (
                 <tr key={m.machineId} style={{ borderBottom: "1px solid #eaeef2" }}>
                   <td>{m.machineId}</td>
-                  <td>{m.machineName}</td>
+                  <td>
+                    {m.machineName}
+                    {m.machineModel && <div style={{ fontSize: 12, color: "#57606a" }}>{m.machineModel}</div>}
+                  </td>
+                  <td>{m.dataSource}</td>
                   <td>{m.status}</td>
                   <td>{m.isActive ? "yes" : "no"}</td>
                   <td>{m.ratedPowerKw ?? "—"}</td>
                   <td>{m.laborCostPerHour ?? "—"}</td>
                   <td>{m.targetCycleTimeSec ?? "—"}</td>
-                  <td style={{ display: "flex", gap: 4 }}>
+                  <td>
+                    {m.maintenanceIntervalHours == null ? (
+                      "—"
+                    ) : (
+                      <span style={{ color: m.maintenanceDue ? "#cf222e" : "#57606a" }}>
+                        {m.runHoursSinceMaintenance?.toFixed(1)} / {m.maintenanceIntervalHours} h
+                        {m.maintenanceDue ? " ⚠ due" : ""}
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                     <button onClick={() => startEdit(m)}>Edit</button>
                     <button onClick={() => toggleActive(m)}>{m.isActive ? "Deactivate" : "Activate"}</button>
+                    {m.maintenanceIntervalHours != null && (
+                      <button onClick={() => logMaintenance(m)}>Mark Maintained</button>
+                    )}
                   </td>
                 </tr>
               )
@@ -181,7 +254,9 @@ export default function AdminView() {
         </table>
         <p style={{ fontSize: 13, color: "#57606a" }}>
           Deactivating a machine stops the backend from accepting its MQTT telemetry (status becomes{" "}
-          <strong>INACTIVE</strong>) — it does not stop the machine's own simulator/PLC from publishing.
+          <strong>INACTIVE</strong>) and — for MQTT-sourced machines — stops its simulator container too,
+          so it actually goes quiet instead of just being ignored. Full history of every change here is on
+          the <Link to="/audit-log">Audit Log</Link> page.
         </p>
       </section>
     </div>

@@ -3,12 +3,18 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL;
 export type Machine = {
   machineId: string;
   machineName: string;
+  machineModel: string | null;
   status: string;
   lastSeenAt: string | null;
   isActive: boolean;
+  dataSource: "MQTT" | "MANUAL";
   ratedPowerKw: number | null;
   laborCostPerHour: number | null;
   targetCycleTimeSec: number | null;
+  maintenanceIntervalHours: number | null;
+  lastMaintenanceAt: string;
+  runHoursSinceMaintenance?: number;
+  maintenanceDue?: boolean;
 };
 
 export type Alarm = {
@@ -92,6 +98,40 @@ export type KpiSummary = {
   };
 };
 
+export type AuditLogEntry = {
+  id: string;
+  actor: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  detail: string | null;
+  createdAt: string;
+};
+
+export type SystemStats = {
+  machines: { total: number; active: number; manual: number };
+  rowCounts: Record<string, number>;
+  telemetry: {
+    oldest: string | null;
+    newest: string | null;
+    rowsLast60s: number;
+    rowsLast5m: number;
+    estimatedRowsPerSecond: number;
+  };
+  database: {
+    totalSizePretty: string | null;
+    totalSizeBytes: number | null;
+    tables: { name: string; sizePretty: string; sizeBytes: number }[];
+  };
+};
+
+export type ImportResult = {
+  created: number;
+  updated: number;
+  failed: { row: number; error: string }[];
+  totalRows: number;
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -113,8 +153,17 @@ export const api = {
   getMachines: () => request<Machine[]>("/machines"),
   getActiveAlarms: () => request<Alarm[]>("/alarms/active"),
   getJob: (jobNumber: string) => request<ProductionJob>(`/jobs/${encodeURIComponent(jobNumber)}`),
-  searchJobs: (params: { machineId?: string; q?: string }) =>
-    request<ProductionJob[]>(`/jobs${qs(params)}`),
+  searchJobs: (params: {
+    machineId?: string;
+    q?: string;
+    productCode?: string;
+    status?: string;
+    from?: string;
+    to?: string;
+    sort?: string;
+    dir?: string;
+    limit?: string;
+  }) => request<ProductionJob[]>(`/jobs${qs(params)}`),
   getMachineHistory: (machineId: string, from?: string, to?: string) =>
     request<TelemetryPoint[]>(`/machines/${encodeURIComponent(machineId)}/history${qs({ from, to })}`),
   getMachineEvents: (machineId: string, from?: string, to?: string) =>
@@ -126,22 +175,37 @@ export const api = {
   adminCreateMachine: (data: {
     machineId: string;
     machineName: string;
+    machineModel?: string;
+    dataSource?: "MQTT" | "MANUAL";
     ratedPowerKw?: number;
     laborCostPerHour?: number;
     targetCycleTimeSec?: number;
-  }) => request<Machine>("/admin/machines", { method: "POST", body: JSON.stringify(data) }),
+    maintenanceIntervalHours?: number;
+  }) => request<Machine & { simulator?: { ok: boolean; reason?: string; reused?: boolean } }>("/admin/machines", {
+    method: "POST",
+    body: JSON.stringify(data),
+  }),
   adminPatchMachine: (
     machineId: string,
     data: {
       machineName?: string;
+      machineModel?: string | null;
       isActive?: boolean;
       ratedPowerKw?: number | null;
       laborCostPerHour?: number | null;
       targetCycleTimeSec?: number | null;
+      maintenanceIntervalHours?: number | null;
     }
   ) =>
-    request<Machine>(`/admin/machines/${encodeURIComponent(machineId)}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
+    request<Machine & { simulator?: { ok: boolean; reason?: string } }>(
+      `/admin/machines/${encodeURIComponent(machineId)}`,
+      { method: "PATCH", body: JSON.stringify(data) }
+    ),
+  adminLogMaintenance: (machineId: string) =>
+    request<Machine>(`/admin/machines/${encodeURIComponent(machineId)}/maintenance`, { method: "POST" }),
+  getAuditLog: (params: { targetId?: string; action?: string; limit?: string }) =>
+    request<AuditLogEntry[]>(`/admin/audit-log${qs(params)}`),
+  getSystemStats: () => request<SystemStats>("/admin/system-stats"),
+  importJobs: (machineId: string, csvText: string) =>
+    request<ImportResult>("/admin/import/jobs", { method: "POST", body: JSON.stringify({ machineId, csvText }) }),
 };

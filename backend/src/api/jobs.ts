@@ -1,17 +1,32 @@
 import { Router } from "express";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db/client";
 
 export const jobsRouter = Router();
 
+const SORTABLE_FIELDS = new Set(["startTime", "jobNumber", "goodQty", "rejectQty", "status"]);
+
 jobsRouter.get("/jobs", async (req, res) => {
-  const { machineId, q, limit } = req.query;
-  const jobs = await prisma.productionJob.findMany({
-    where: {
-      machineId: machineId ? String(machineId) : undefined,
-      jobNumber: q ? { contains: String(q), mode: "insensitive" } : undefined,
+  const { machineId, q, productCode, status, from, to, sort, dir, limit } = req.query;
+
+  const where: Prisma.ProductionJobWhereInput = {
+    machineId: machineId ? String(machineId) : undefined,
+    jobNumber: q ? { contains: String(q), mode: "insensitive" } : undefined,
+    productCode: productCode ? { contains: String(productCode), mode: "insensitive" } : undefined,
+    status: status ? String(status) : undefined,
+    startTime: {
+      gte: from ? new Date(String(from)) : undefined,
+      lte: to ? new Date(String(to)) : undefined,
     },
-    orderBy: { startTime: "desc" },
-    take: limit ? Number(limit) : 20,
+  };
+
+  const sortField = typeof sort === "string" && SORTABLE_FIELDS.has(sort) ? sort : "startTime";
+  const sortDir = dir === "asc" ? "asc" : "desc";
+
+  const jobs = await prisma.productionJob.findMany({
+    where,
+    orderBy: { [sortField]: sortDir },
+    take: limit ? Number(limit) : 50,
   });
   res.json(jobs);
 });

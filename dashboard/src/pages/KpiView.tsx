@@ -20,6 +20,8 @@ export default function KpiView() {
   const [to, setTo] = useState(() => toLocalInputValue(new Date()));
   const [summary, setSummary] = useState<KpiSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [manualMachineCount, setManualMachineCount] = useState(0);
+  const [inactiveMachineCount, setInactiveMachineCount] = useState(0);
 
   async function load(e?: React.FormEvent) {
     e?.preventDefault();
@@ -33,6 +35,13 @@ export default function KpiView() {
 
   useEffect(() => {
     load();
+    api
+      .adminListMachines()
+      .then((list) => {
+        setManualMachineCount(list.filter((m) => m.dataSource === "MANUAL").length);
+        setInactiveMachineCount(list.filter((m) => !m.isActive).length);
+      })
+      .catch(console.error);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -50,6 +59,29 @@ export default function KpiView() {
         <button type="submit">Load</button>
       </form>
       {error && <div style={{ color: "#cf222e" }}>{error}</div>}
+
+      {(manualMachineCount > 0 || inactiveMachineCount > 0) && (
+        <div
+          style={{
+            border: "1px solid #f0c36d",
+            background: "#fff8e6",
+            borderRadius: 8,
+            padding: 12,
+            fontSize: 13,
+            maxWidth: 700,
+          }}
+        >
+          <strong>⚠ Blind spot in these numbers:</strong>{" "}
+          {manualMachineCount > 0 &&
+            `${manualMachineCount} machine(s) are dataSource=MANUAL (legacy, no live connection) and are excluded from every KPI below entirely — their real output isn't reflected in fleet Availability/OEE at all. `}
+          {inactiveMachineCount > 0 &&
+            `${inactiveMachineCount} machine(s) are currently deactivated and also excluded. `}
+          This mirrors GAP_ANALYSIS §1.4: a factory with unconnected old equipment has a{" "}
+          <em>permanent</em> blind spot here, not a temporary glitch — the fleet numbers below are only
+          representative of the machines this system can actually see, never assume they're the whole
+          plant.
+        </div>
+      )}
 
       {summary && (
         <>
@@ -113,6 +145,41 @@ export default function KpiView() {
               Performance/OEE show "—" for machines without a configured Target Cycle Time (set it in
               Admin). QC hold rate isn't shown — there's no "QC hold" concept in the current data model.
             </p>
+          </section>
+
+          <section>
+            <h2>Where these numbers come from</h2>
+            <p style={{ fontSize: 13, color: "#57606a", maxWidth: 700 }}>
+              Standard OEE decomposition (ISO 22400-2), computed per machine over the selected From/To
+              window, then rolled up:
+            </p>
+            <ul style={{ fontSize: 13, color: "#57606a", maxWidth: 700, lineHeight: 1.8 }}>
+              <li>
+                <strong>Availability</strong> = time spent in <code>RUN</code> status ÷ window length,
+                reconstructed from <code>machine_status_events</code> (every status change is logged, so
+                this is exact, not sampled).
+              </li>
+              <li>
+                <strong>Performance</strong> = Target Cycle Time ÷ actual average Cycle Time while running,
+                capped at 100%. Requires Target Cycle Time to be set in Admin — otherwise "—", never a
+                guessed default.
+              </li>
+              <li>
+                <strong>Quality</strong> = Good Qty ÷ (Good + Reject + Startup Scrap) from{" "}
+                <code>production_jobs</code> that started in the window. Startup scrap (first few shots
+                after a mold/job change) is excluded from Reject per GAP_ANALYSIS §1.2, so short jobs don't
+                show artificially low yield.
+              </li>
+              <li>
+                <strong>OEE</strong> = Availability × Performance × Quality — only computed when all three
+                have a value.
+              </li>
+              <li>
+                <strong>Est. Energy / Labor Cost</strong> are <em>estimates</em>: rated power (kW) and labor
+                cost ($/hr) from Admin config × measured runtime hours. Not a metered reading — treat as
+                directional, not billing-grade.
+              </li>
+            </ul>
           </section>
         </>
       )}

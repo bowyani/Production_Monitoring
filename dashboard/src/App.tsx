@@ -3,6 +3,9 @@ import OperatorView from "./pages/OperatorView";
 import AdminView from "./pages/AdminView";
 import HistoryView from "./pages/HistoryView";
 import KpiView from "./pages/KpiView";
+import AuditLogView from "./pages/AuditLogView";
+import SystemHealthView from "./pages/SystemHealthView";
+import ImportView from "./pages/ImportView";
 
 export default function App() {
   return (
@@ -12,12 +15,18 @@ export default function App() {
         <Link to="/history">History</Link>
         <Link to="/kpi">Executive KPI</Link>
         <Link to="/admin">Admin</Link>
+        <Link to="/import">Import</Link>
+        <Link to="/audit-log">Audit Log</Link>
+        <Link to="/system">System Health</Link>
       </nav>
       <Routes>
         <Route path="/" element={<OperatorView />} />
         <Route path="/history" element={<HistoryView />} />
         <Route path="/kpi" element={<KpiView />} />
         <Route path="/admin" element={<AdminView />} />
+        <Route path="/import" element={<ImportView />} />
+        <Route path="/audit-log" element={<AuditLogView />} />
+        <Route path="/system" element={<SystemHealthView />} />
       </Routes>
     </BrowserRouter>
   );
