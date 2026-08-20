@@ -3,7 +3,7 @@ import { broadcast } from "./ws/live";
 import { config } from "./config";
 
 // Catches machines that stopped publishing entirely (as opposed to a clean
-// disconnect an MQTT Last Will could catch) — see DESIGN_RATIONALE.md §5.
+// disconnect an MQTT Last Will could catch) — see README.md ("Design Rationale" section).
 export function startWatchdog() {
   setInterval(async () => {
     const thresholdMs = config.watchdogOfflineThresholdSec * 1000;

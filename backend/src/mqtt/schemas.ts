@@ -1,8 +1,8 @@
 import { z } from "zod";
 
-// Payload groups follow DESIGN_RATIONALE.md §3 (machineData/processData) and
-// the EUROMAP 77-inspired grouping noted in GAP_ANALYSIS.md §1.7
-// (machineData/jobData/processData/alarmData).
+// Payload groups (machineData/jobData/processData/alarmData) follow the
+// EUROMAP 77-inspired grouping in README.md ("API / Message Format" and
+// "Gap Analysis" §1.7 sections).
 
 export const telemetrySchema = z.object({
   schemaVersion: z.string(),

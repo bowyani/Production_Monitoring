@@ -4,7 +4,7 @@ import type { Machine } from "@prisma/client";
 
 export const kpiRouter = Router();
 
-// Executive KPI summary — answers GAP_ANALYSIS.md §1.6 (OEE%, Cost per Hour,
+// Executive KPI summary — answers README.md ("Gap Analysis" §1.6) (OEE%, Cost per Hour,
 // Reject rate, Energy). QC hold rate is NOT computed: there is no "QC hold"
 // concept in the current data model, so it's omitted rather than faked.
 kpiRouter.get("/kpi/summary", async (req, res) => {

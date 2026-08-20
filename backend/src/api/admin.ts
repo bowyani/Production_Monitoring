@@ -24,7 +24,7 @@ const patchMachineSchema = z.object({
 
 // New machines are inserted here, not hardcoded — MQTT wildcard subscription
 // (factory/+/...) means telemetry starts flowing the moment this returns,
-// no service restart required. See DESIGN_RATIONALE.md §1.
+// no service restart required. See README.md ("Design Rationale" section).
 adminRouter.post("/admin/machines", async (req, res) => {
   const parsed = createMachineSchema.safeParse(req.body);
   if (!parsed.success) {

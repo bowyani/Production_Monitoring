@@ -53,7 +53,7 @@ function publishJSON(client: MqttClient, topic: string, payload: unknown) {
 }
 
 // Registers via the Admin API (the legitimate registration channel — see
-// DESIGN_RATIONALE.md §3) so `docker compose up` produces a working demo
+// README.md, "Design Rationale" section) so `docker compose up` produces a working demo
 // without a manual Admin UI step first. The MQTT ingestion path still
 // rejects telemetry from any machineId that isn't registered.
 async function registerMachine() {
@@ -87,7 +87,7 @@ function startJob() {
   state.goodQty = 0;
   state.rejectQty = 0;
   // First few shots after a mold/job change are purge scrap, not reject —
-  // see GAP_ANALYSIS.md §1.2.
+  // see README.md, "Gap Analysis" §1.2.
   state.startupScrapQty = 3;
   state.jobShotsRemaining = 30 + Math.floor(Math.random() * 40);
   state.status = "RUN";
@@ -103,7 +103,7 @@ function tick(client: MqttClient) {
 
   // Occasionally stop publishing entirely, without disconnecting from MQTT —
   // this is what the backend watchdog (not MQTT LWT) is designed to catch.
-  // See DESIGN_RATIONALE.md §5.
+  // See README.md, "Design Rationale" section.
   if (state.silentTicksRemaining > 0) {
     state.silentTicksRemaining -= 1;
     return;
