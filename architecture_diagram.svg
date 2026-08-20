@@ -114,13 +114,18 @@
   <text x="1250" y="284" text-anchor="middle" font-size="10" fill="#4A148C">ค้นหาด้วย Job Number</text>
   <text x="1250" y="302" text-anchor="middle" font-size="10" fill="#4A148C">ประวัติ Alarm</text>
 
-  <rect x="1136" y="340" width="228" height="80" rx="6" fill="#FFFFFF" stroke="#6A1B9A" stroke-width="1"/>
-  <text x="1250" y="363" text-anchor="middle" font-size="11" font-weight="bold" fill="#4A148C">Admin View</text>
-  <text x="1250" y="382" text-anchor="middle" font-size="10" fill="#4A148C">ลงทะเบียน/จัดการเครื่องจักร</text>
-  <text x="1250" y="399" text-anchor="middle" font-size="10" fill="#4A148C">ไม่ต้อง restart service</text>
+  <rect x="1136" y="332" width="228" height="60" rx="6" fill="#FFFFFF" stroke="#6A1B9A" stroke-width="1"/>
+  <text x="1250" y="352" text-anchor="middle" font-size="11" font-weight="bold" fill="#4A148C">Executive KPI View</text>
+  <text x="1250" y="369" text-anchor="middle" font-size="9.5" fill="#4A148C">OEE, Availability/Performance/Quality,</text>
+  <text x="1250" y="384" text-anchor="middle" font-size="9.5" fill="#4A148C">Reject Rate, Est. Energy &amp; Labor Cost</text>
+
+  <rect x="1136" y="400" width="228" height="72" rx="6" fill="#FFFFFF" stroke="#6A1B9A" stroke-width="1"/>
+  <text x="1250" y="420" text-anchor="middle" font-size="11" font-weight="bold" fill="#4A148C">Admin View</text>
+  <text x="1250" y="438" text-anchor="middle" font-size="10" fill="#4A148C">ลงทะเบียน/แก้ไขเครื่องจักร</text>
+  <text x="1250" y="455" text-anchor="middle" font-size="10" fill="#4A148C">ไม่ต้อง restart service</text>
 
   <!-- Dashed admin arrow back to backend -->
-  <path d="M1136,395 C 1010,470 900,430 862,353" fill="none" stroke="#6A1B9A" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowPurple)"/>
+  <path d="M1136,436 C 1010,500 900,430 862,353" fill="none" stroke="#6A1B9A" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowPurple)"/>
   <text x="905" y="450" font-size="9.5" fill="#6A1B9A">POST /api/v1/admin/machines</text>
   <text x="905" y="464" font-size="9.5" fill="#6A1B9A">(เพิ่มเครื่องจักรใหม่แบบ live)</text>
 
