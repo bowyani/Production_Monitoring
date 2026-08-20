@@ -22,5 +22,69 @@ services:
       timeout: 5s
       retries: 10
 
+  backend:
+    build: ./backend
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      BACKEND_PORT: 3000
+      BACKEND_WATCHDOG_OFFLINE_THRESHOLD_SEC: ${BACKEND_WATCHDOG_OFFLINE_THRESHOLD_SEC}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  dashboard:
+    build:
+      context: ./dashboard
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+        VITE_WS_URL: ${VITE_WS_URL}
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+  simulator-01:
+    build: ./simulator
+    environment:
+      MACHINE_ID: IMM-01
+      MACHINE_NAME: Injection Molding Machine 01
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      BACKEND_API_URL: http://backend:3000/api/v1
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  simulator-02:
+    build: ./simulator
+    environment:
+      MACHINE_ID: IMM-02
+      MACHINE_NAME: Injection Molding Machine 02
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      BACKEND_API_URL: http://backend:3000/api/v1
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  simulator-03:
+    build: ./simulator
+    environment:
+      MACHINE_ID: IMM-03
+      MACHINE_NAME: Injection Molding Machine 03
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      BACKEND_API_URL: http://backend:3000/api/v1
+    depends_on:
+      backend:
+        condition: service_healthy
+
 volumes:
   postgres-data:

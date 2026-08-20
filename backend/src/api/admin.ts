@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db/client";
 
 export const adminRouter = Router();
@@ -26,8 +27,16 @@ adminRouter.post("/admin/machines", async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const machine = await prisma.machine.create({ data: parsed.data });
-  res.status(201).json(machine);
+  try {
+    const machine = await prisma.machine.create({ data: parsed.data });
+    res.status(201).json(machine);
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      res.status(409).json({ error: "machineId already registered" });
+      return;
+    }
+    throw err;
+  }
 });
 
 adminRouter.get("/admin/machines", async (_req, res) => {
