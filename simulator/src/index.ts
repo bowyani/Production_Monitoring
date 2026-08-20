@@ -9,7 +9,7 @@ const TICK_MS = 2000;
 const PRODUCT_CODES = ["PVC-90-ELBOW", "PVC-110-TEE", "PVC-63-COUPLING"];
 
 type MachineState = {
-  status: "RUN" | "IDLE" | "ALARM";
+  status: "RUN" | "STOP" | "ALARM";
   shotCount: number;
   cycleTimeSec: number;
   pressureBar: number;
@@ -24,7 +24,7 @@ type MachineState = {
 };
 
 const state: MachineState = {
-  status: "IDLE",
+  status: "STOP",
   shotCount: 0,
   cycleTimeSec: 12,
   pressureBar: 850,
@@ -188,7 +188,7 @@ function tick(client: MqttClient) {
         },
       });
       state.jobNumber = null;
-      state.status = "IDLE";
+      state.status = "STOP";
     }
   }
 

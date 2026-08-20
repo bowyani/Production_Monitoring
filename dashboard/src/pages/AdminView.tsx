@@ -1,11 +1,29 @@
 import { useEffect, useState } from "react";
 import { api, type Machine } from "../lib/api";
 
+type EditState = {
+  machineName: string;
+  ratedPowerKw: string;
+  laborCostPerHour: string;
+  targetCycleTimeSec: string;
+};
+
+function toEditState(m: Machine): EditState {
+  return {
+    machineName: m.machineName,
+    ratedPowerKw: m.ratedPowerKw?.toString() ?? "",
+    laborCostPerHour: m.laborCostPerHour?.toString() ?? "",
+    targetCycleTimeSec: m.targetCycleTimeSec?.toString() ?? "",
+  };
+}
+
 export default function AdminView() {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [machineId, setMachineId] = useState("");
   const [machineName, setMachineName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [edit, setEdit] = useState<EditState | null>(null);
 
   function refresh() {
     api.adminListMachines().then(setMachines).catch(console.error);
@@ -28,6 +46,24 @@ export default function AdminView() {
 
   async function toggleActive(m: Machine) {
     await api.adminPatchMachine(m.machineId, { isActive: !m.isActive });
+    refresh();
+  }
+
+  function startEdit(m: Machine) {
+    setEditingId(m.machineId);
+    setEdit(toEditState(m));
+  }
+
+  async function saveEdit(m: Machine) {
+    if (!edit) return;
+    await api.adminPatchMachine(m.machineId, {
+      machineName: edit.machineName,
+      ratedPowerKw: edit.ratedPowerKw === "" ? null : Number(edit.ratedPowerKw),
+      laborCostPerHour: edit.laborCostPerHour === "" ? null : Number(edit.laborCostPerHour),
+      targetCycleTimeSec: edit.targetCycleTimeSec === "" ? null : Number(edit.targetCycleTimeSec),
+    });
+    setEditingId(null);
+    setEdit(null);
     refresh();
   }
 
@@ -55,10 +91,16 @@ export default function AdminView() {
           <button type="submit">Add</button>
         </form>
         {error && <div style={{ color: "#cf222e" }}>{error}</div>}
-        <p style={{ fontSize: 13, color: "#57606a" }}>
-          Takes effect immediately — no service restart needed, since the backend subscribes to MQTT
-          via wildcard topic.
+        <p style={{ fontSize: 13, color: "#57606a", maxWidth: 640 }}>
+          Registering a machine here only creates its record — it will show <strong>OFFLINE</strong>{" "}
+          until something actually publishes telemetry for its Machine ID over MQTT. In this prototype
+          that means starting a Simulator instance for it, e.g.:
         </p>
+        <pre style={{ background: "#f6f8fa", padding: 8, borderRadius: 6, fontSize: 12, maxWidth: 640 }}>
+          {`docker compose run -d --rm --name simulator-${machineId || "IMM-04"} \\\n  -e MACHINE_ID=${
+            machineId || "IMM-04"
+          } -e MACHINE_NAME="${machineName || "..."}" \\\n  -e MQTT_BROKER_URL=mqtt://mosquitto:1883 \\\n  -e BACKEND_API_URL=http://backend:3000/api/v1 \\\n  simulator-01`}
+        </pre>
       </section>
 
       <section>
@@ -70,23 +112,77 @@ export default function AdminView() {
               <th>Name</th>
               <th>Status</th>
               <th>Active</th>
+              <th>Rated kW</th>
+              <th>Labor $/hr</th>
+              <th>Target Cycle (s)</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {machines.map((m) => (
-              <tr key={m.machineId} style={{ borderBottom: "1px solid #eaeef2" }}>
-                <td>{m.machineId}</td>
-                <td>{m.machineName}</td>
-                <td>{m.status}</td>
-                <td>{m.isActive ? "yes" : "no"}</td>
-                <td>
-                  <button onClick={() => toggleActive(m)}>{m.isActive ? "Deactivate" : "Activate"}</button>
-                </td>
-              </tr>
-            ))}
+            {machines.map((m) =>
+              editingId === m.machineId && edit ? (
+                <tr key={m.machineId} style={{ borderBottom: "1px solid #eaeef2" }}>
+                  <td>{m.machineId}</td>
+                  <td>
+                    <input
+                      value={edit.machineName}
+                      onChange={(e) => setEdit({ ...edit, machineName: e.target.value })}
+                      style={{ width: 140 }}
+                    />
+                  </td>
+                  <td>{m.status}</td>
+                  <td>{m.isActive ? "yes" : "no"}</td>
+                  <td>
+                    <input
+                      value={edit.ratedPowerKw}
+                      onChange={(e) => setEdit({ ...edit, ratedPowerKw: e.target.value })}
+                      style={{ width: 70 }}
+                      inputMode="decimal"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      value={edit.laborCostPerHour}
+                      onChange={(e) => setEdit({ ...edit, laborCostPerHour: e.target.value })}
+                      style={{ width: 70 }}
+                      inputMode="decimal"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      value={edit.targetCycleTimeSec}
+                      onChange={(e) => setEdit({ ...edit, targetCycleTimeSec: e.target.value })}
+                      style={{ width: 70 }}
+                      inputMode="decimal"
+                    />
+                  </td>
+                  <td style={{ display: "flex", gap: 4 }}>
+                    <button onClick={() => saveEdit(m)}>Save</button>
+                    <button onClick={() => setEditingId(null)}>Cancel</button>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={m.machineId} style={{ borderBottom: "1px solid #eaeef2" }}>
+                  <td>{m.machineId}</td>
+                  <td>{m.machineName}</td>
+                  <td>{m.status}</td>
+                  <td>{m.isActive ? "yes" : "no"}</td>
+                  <td>{m.ratedPowerKw ?? "—"}</td>
+                  <td>{m.laborCostPerHour ?? "—"}</td>
+                  <td>{m.targetCycleTimeSec ?? "—"}</td>
+                  <td style={{ display: "flex", gap: 4 }}>
+                    <button onClick={() => startEdit(m)}>Edit</button>
+                    <button onClick={() => toggleActive(m)}>{m.isActive ? "Deactivate" : "Activate"}</button>
+                  </td>
+                </tr>
+              )
+            )}
           </tbody>
         </table>
+        <p style={{ fontSize: 13, color: "#57606a" }}>
+          Deactivating a machine stops the backend from accepting its MQTT telemetry (status becomes{" "}
+          <strong>INACTIVE</strong>) — it does not stop the machine's own simulator/PLC from publishing.
+        </p>
       </section>
     </div>
   );

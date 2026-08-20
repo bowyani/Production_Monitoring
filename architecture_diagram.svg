@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1420 830" font-family="Noto Sans Thai, Waree, Arial, Helvetica, sans-serif">
+  <defs>
+    <marker id="arrowGray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0L10,5L0,10z" fill="#333333"/>
+    </marker>
+    <marker id="arrowPurple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0L10,5L0,10z" fill="#6A1B9A"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1420" height="830" fill="#FAFAFA"/>
+
+  <!-- Title -->
+  <text x="710" y="32" text-anchor="middle" font-size="22" font-weight="bold" fill="#212121">Production Monitoring System — Architecture Diagram</text>
+  <text x="710" y="52" text-anchor="middle" font-size="13" fill="#616161">Machine Simulator → MQTT Broker → Backend Service → Database &amp; Dashboard</text>
+
+  <!-- Docker Compose boundary -->
+  <rect x="30" y="90" width="860" height="700" fill="none" stroke="#9E9E9E" stroke-width="1.5" stroke-dasharray="6,4" rx="10"/>
+  <text x="45" y="112" font-size="12" font-style="italic" fill="#757575">Docker Compose — รันเป็นชุดเดียวกัน (self-contained infra)</text>
+
+  <!-- Machine Simulators -->
+  <rect x="60" y="140" width="220" height="65" rx="8" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.5"/>
+  <text x="170" y="167" text-anchor="middle" font-size="13" font-weight="bold" fill="#0D47A1">Machine Simulator</text>
+  <text x="170" y="185" text-anchor="middle" font-size="12" fill="#0D47A1">IMM-01</text>
+
+  <rect x="60" y="225" width="220" height="65" rx="8" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.5"/>
+  <text x="170" y="252" text-anchor="middle" font-size="13" font-weight="bold" fill="#0D47A1">Machine Simulator</text>
+  <text x="170" y="270" text-anchor="middle" font-size="12" fill="#0D47A1">IMM-02</text>
+
+  <rect x="60" y="310" width="220" height="65" rx="8" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.5"/>
+  <text x="170" y="337" text-anchor="middle" font-size="13" font-weight="bold" fill="#0D47A1">Machine Simulator</text>
+  <text x="170" y="355" text-anchor="middle" font-size="12" fill="#0D47A1">IMM-03</text>
+
+  <rect x="60" y="395" width="220" height="50" rx="8" fill="none" stroke="#1565C0" stroke-width="1.2" stroke-dasharray="4,3"/>
+  <text x="170" y="417" text-anchor="middle" font-size="11" fill="#0D47A1">+ IMM-0N</text>
+  <text x="170" y="432" text-anchor="middle" font-size="10" fill="#0D47A1">(เพิ่มเครื่องได้ไม่จำกัด ผ่าน Admin)</text>
+
+  <!-- Arrows: simulators -> broker -->
+  <line x1="280" y1="172" x2="335" y2="270" stroke="#333333" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <line x1="280" y1="257" x2="335" y2="280" stroke="#333333" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <line x1="280" y1="342" x2="335" y2="290" stroke="#333333" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <text x="310" y="200" text-anchor="middle" font-size="10" fill="#333333">MQTT</text>
+
+  <!-- MQTT Broker -->
+  <rect x="340" y="150" width="200" height="220" rx="8" fill="#FFF8E1" stroke="#F9A825" stroke-width="1.5"/>
+  <text x="440" y="178" text-anchor="middle" font-size="14" font-weight="bold" fill="#E65100">MQTT Broker</text>
+  <text x="440" y="196" text-anchor="middle" font-size="12" fill="#E65100">(Mosquitto)</text>
+  <line x1="360" y1="210" x2="520" y2="210" stroke="#F9A825" stroke-width="1"/>
+  <text x="440" y="230" text-anchor="middle" font-size="10.5" fill="#8D6E00">Topics:</text>
+  <text x="440" y="248" text-anchor="middle" font-size="10" fill="#8D6E00">factory/{id}/telemetry</text>
+  <text x="440" y="264" text-anchor="middle" font-size="10" fill="#8D6E00">factory/{id}/job</text>
+  <text x="440" y="280" text-anchor="middle" font-size="10" fill="#8D6E00">factory/{id}/alarm</text>
+  <text x="440" y="304" text-anchor="middle" font-size="9.5" fill="#8D6E00">payload: machineData / processData /</text>
+  <text x="440" y="318" text-anchor="middle" font-size="9.5" fill="#8D6E00">jobData / alarmData + schemaVersion</text>
+  <text x="440" y="340" text-anchor="middle" font-size="9.5" fill="#8D6E00">(ทุก message ผ่าน retain/QoS ที่กำหนด)</text>
+
+  <!-- Arrow broker -> backend -->
+  <line x1="540" y1="260" x2="596" y2="260" stroke="#333333" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <text x="545" y="245" font-size="10" fill="#333333">subscribe</text>
+  <text x="545" y="285" font-size="9.5" fill="#333333">factory/+/... (wildcard)</text>
+
+  <!-- Backend Service -->
+  <rect x="600" y="140" width="260" height="360" rx="8" fill="#F1F8E9" stroke="#558B2F" stroke-width="1.5"/>
+  <text x="730" y="163" text-anchor="middle" font-size="14" font-weight="bold" fill="#33691E">Backend Service</text>
+  <text x="730" y="180" text-anchor="middle" font-size="11" fill="#33691E">(Node.js / TypeScript)</text>
+
+  <rect x="616" y="195" width="228" height="52" rx="6" fill="#FFFFFF" stroke="#558B2F" stroke-width="1"/>
+  <text x="730" y="215" text-anchor="middle" font-size="11" font-weight="bold" fill="#33691E">MQTT Subscriber</text>
+  <text x="730" y="230" text-anchor="middle" font-size="10" fill="#33691E">+ Payload Validator</text>
+
+  <rect x="616" y="258" width="228" height="52" rx="6" fill="#FFFFFF" stroke="#558B2F" stroke-width="1"/>
+  <text x="730" y="278" text-anchor="middle" font-size="11" font-weight="bold" fill="#33691E">Watchdog</text>
+  <text x="730" y="293" text-anchor="middle" font-size="10" fill="#33691E">(OFFLINE Detection, last_seen_at)</text>
+
+  <rect x="616" y="321" width="228" height="52" rx="6" fill="#FFFFFF" stroke="#558B2F" stroke-width="1"/>
+  <text x="730" y="341" text-anchor="middle" font-size="11" font-weight="bold" fill="#33691E">REST API</text>
+  <text x="730" y="356" text-anchor="middle" font-size="10" fill="#33691E">/api/v1 (+ /api/v1/admin)</text>
+
+  <rect x="616" y="384" width="228" height="52" rx="6" fill="#FFFFFF" stroke="#558B2F" stroke-width="1"/>
+  <text x="730" y="404" text-anchor="middle" font-size="11" font-weight="bold" fill="#33691E">WebSocket Server</text>
+  <text x="730" y="419" text-anchor="middle" font-size="10" fill="#33691E">/live (real-time push)</text>
+
+  <!-- Arrow backend -> database -->
+  <line x1="730" y1="500" x2="730" y2="556" stroke="#333333" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <text x="740" y="525" font-size="10" fill="#333333">SQL read / write</text>
+  <text x="740" y="540" font-size="9.5" fill="#333333">(Prisma + migrations)</text>
+
+  <!-- Database -->
+  <rect x="600" y="560" width="260" height="210" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.5"/>
+  <text x="730" y="585" text-anchor="middle" font-size="14" font-weight="bold" fill="#1B5E20">PostgreSQL</text>
+  <line x1="616" y1="596" x2="844" y2="596" stroke="#2E7D32" stroke-width="1"/>
+  <text x="730" y="617" text-anchor="middle" font-size="11" fill="#1B5E20">machines</text>
+  <text x="730" y="637" text-anchor="middle" font-size="11" fill="#1B5E20">machine_telemetry</text>
+  <text x="730" y="657" text-anchor="middle" font-size="11" fill="#1B5E20">machine_status_events</text>
+  <text x="730" y="677" text-anchor="middle" font-size="11" fill="#1B5E20">production_jobs</text>
+  <text x="730" y="697" text-anchor="middle" font-size="11" fill="#1B5E20">alarms</text>
+  <text x="730" y="725" text-anchor="middle" font-size="9.5" fill="#1B5E20">migration แบบ versioned (up/down)</text>
+  <text x="730" y="740" text-anchor="middle" font-size="9.5" fill="#1B5E20">ผ่าน Prisma Migrate</text>
+
+  <!-- Arrow backend -> dashboard -->
+  <line x1="860" y1="230" x2="1116" y2="230" stroke="#333333" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <text x="900" y="215" font-size="10" fill="#333333">REST API + WebSocket</text>
+  <text x="900" y="248" font-size="9.5" fill="#333333">(real-time push ไปหน้าจอ)</text>
+
+  <!-- Dashboard -->
+  <rect x="1120" y="150" width="260" height="360" rx="8" fill="#F3E5F5" stroke="#6A1B9A" stroke-width="1.5"/>
+  <text x="1250" y="173" text-anchor="middle" font-size="14" font-weight="bold" fill="#4A148C">Dashboard (React)</text>
+  <text x="1250" y="190" text-anchor="middle" font-size="11" fill="#4A148C">Browser Client</text>
+
+  <rect x="1136" y="205" width="228" height="120" rx="6" fill="#FFFFFF" stroke="#6A1B9A" stroke-width="1"/>
+  <text x="1250" y="228" text-anchor="middle" font-size="11" font-weight="bold" fill="#4A148C">Operator View</text>
+  <text x="1250" y="248" text-anchor="middle" font-size="10" fill="#4A148C">สถานะเครื่องล่าสุด / Active Alarm</text>
+  <text x="1250" y="266" text-anchor="middle" font-size="10" fill="#4A148C">Historical Data (เลือกเครื่อง+ช่วงเวลา)</text>
+  <text x="1250" y="284" text-anchor="middle" font-size="10" fill="#4A148C">ค้นหาด้วย Job Number</text>
+  <text x="1250" y="302" text-anchor="middle" font-size="10" fill="#4A148C">ประวัติ Alarm</text>
+
+  <rect x="1136" y="340" width="228" height="80" rx="6" fill="#FFFFFF" stroke="#6A1B9A" stroke-width="1"/>
+  <text x="1250" y="363" text-anchor="middle" font-size="11" font-weight="bold" fill="#4A148C">Admin View</text>
+  <text x="1250" y="382" text-anchor="middle" font-size="10" fill="#4A148C">ลงทะเบียน/จัดการเครื่องจักร</text>
+  <text x="1250" y="399" text-anchor="middle" font-size="10" fill="#4A148C">ไม่ต้อง restart service</text>
+
+  <!-- Dashed admin arrow back to backend -->
+  <path d="M1136,395 C 1010,470 900,430 862,353" fill="none" stroke="#6A1B9A" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowPurple)"/>
+  <text x="905" y="450" font-size="9.5" fill="#6A1B9A">POST /api/v1/admin/machines</text>
+  <text x="905" y="464" font-size="9.5" fill="#6A1B9A">(เพิ่มเครื่องจักรใหม่แบบ live)</text>
+
+  <!-- Legend -->
+  <line x1="60" y1="795" x2="110" y2="795" stroke="#333333" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <text x="118" y="799" font-size="11" fill="#333333">Data Flow (MQTT / REST / WebSocket)</text>
+
+  <line x1="440" y1="795" x2="490" y2="795" stroke="#6A1B9A" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowPurple)"/>
+  <text x="498" y="799" font-size="11" fill="#333333">Admin / Control Action</text>
+</svg>

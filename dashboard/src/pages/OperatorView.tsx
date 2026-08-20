@@ -1,29 +1,62 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, type Machine, type Alarm, type ProductionJob } from "../lib/api";
 import { useLiveSocket } from "../lib/useLiveSocket";
 
 const STATUS_COLOR: Record<string, string> = {
   RUN: "#1a7f37",
-  IDLE: "#9a6700",
+  STOP: "#9a6700",
   ALARM: "#cf222e",
-  STOP: "#57606a",
   OFFLINE: "#57606a",
+  INACTIVE: "#8c959f",
 };
 
+type LiveMachine = Machine & { cycleTimeSec?: number; shotCount?: number };
+
 export default function OperatorView() {
-  const [machines, setMachines] = useState<Machine[]>([]);
+  const [machines, setMachines] = useState<LiveMachine[]>([]);
   const [alarms, setAlarms] = useState<Alarm[]>([]);
   const [jobQuery, setJobQuery] = useState("");
+  const [jobResults, setJobResults] = useState<ProductionJob[]>([]);
   const [job, setJob] = useState<ProductionJob | null>(null);
   const [jobError, setJobError] = useState<string | null>(null);
 
+  function refreshJobs() {
+    api.searchJobs({}).then(setJobResults).catch(console.error);
+  }
+
   useEffect(() => {
+    refreshJobs();
     api.getMachines().then(setMachines).catch(console.error);
     api.getActiveAlarms().then(setAlarms).catch(console.error);
   }, []);
 
+  // The machine grid must show current Job Number/Product/Cycle Time/Good-Reject
+  // per Direction.md §4.3, so the current job per machine is looked up here.
+  const currentJobByMachine = useMemo(() => {
+    const map = new Map<string, ProductionJob>();
+    for (const j of jobResults) {
+      if (j.status === "RUNNING" && !map.has(j.machineId)) map.set(j.machineId, j);
+    }
+    return map;
+  }, [jobResults]);
+
   useLiveSocket((msg) => {
-    if (msg.event === "telemetry" || msg.event === "status") {
+    if (msg.event === "telemetry") {
+      setMachines((prev) =>
+        prev.map((m) =>
+          m.machineId === msg.data.machineId
+            ? {
+                ...m,
+                status: msg.data.status,
+                lastSeenAt: new Date().toISOString(),
+                cycleTimeSec: msg.data.cycleTimeSec ?? m.cycleTimeSec,
+                shotCount: msg.data.shotCount ?? m.shotCount,
+              }
+            : m
+        )
+      );
+    }
+    if (msg.event === "status") {
       setMachines((prev) =>
         prev.map((m) =>
           m.machineId === msg.data.machineId
@@ -32,11 +65,11 @@ export default function OperatorView() {
         )
       );
     }
-    if (msg.event === "alarm" && msg.data.event === "RAISE") {
+    if (msg.event === "alarm") {
       api.getActiveAlarms().then(setAlarms).catch(console.error);
     }
-    if (msg.event === "alarm" && msg.data.event === "CLEAR") {
-      api.getActiveAlarms().then(setAlarms).catch(console.error);
+    if (msg.event === "job") {
+      refreshJobs();
     }
   });
 
@@ -45,7 +78,16 @@ export default function OperatorView() {
     setJobError(null);
     setJob(null);
     try {
-      setJob(await api.getJob(jobQuery.trim()));
+      setJobResults(await api.searchJobs({ q: jobQuery.trim() }));
+    } catch (err) {
+      setJobError(err instanceof Error ? err.message : "search failed");
+    }
+  }
+
+  async function openJob(jobNumber: string) {
+    setJobError(null);
+    try {
+      setJob(await api.getJob(jobNumber));
     } catch (err) {
       setJobError(err instanceof Error ? err.message : "not found");
     }
@@ -57,25 +99,37 @@ export default function OperatorView() {
 
       <section>
         <h2>Machines</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
-          {machines.map((m) => (
-            <div
-              key={m.machineId}
-              style={{
-                border: "1px solid #d0d7de",
-                borderRadius: 8,
-                padding: 12,
-                borderLeft: `6px solid ${STATUS_COLOR[m.status] ?? "#57606a"}`,
-              }}
-            >
-              <strong>{m.machineId}</strong>
-              <div>{m.machineName}</div>
-              <div style={{ color: STATUS_COLOR[m.status] ?? "#57606a", fontWeight: 600 }}>{m.status}</div>
-              <div style={{ fontSize: 12, color: "#57606a" }}>
-                last seen: {m.lastSeenAt ? new Date(m.lastSeenAt).toLocaleTimeString() : "-"}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+          {machines.map((m) => {
+            const currentJob = currentJobByMachine.get(m.machineId);
+            return (
+              <div
+                key={m.machineId}
+                style={{
+                  border: "1px solid #d0d7de",
+                  borderRadius: 8,
+                  padding: 12,
+                  borderLeft: `6px solid ${STATUS_COLOR[m.status] ?? "#57606a"}`,
+                }}
+              >
+                <strong>{m.machineId}</strong>
+                <div>{m.machineName}</div>
+                <div style={{ color: STATUS_COLOR[m.status] ?? "#57606a", fontWeight: 600 }}>{m.status}</div>
+                <div style={{ fontSize: 13, marginTop: 6 }}>
+                  Job: {currentJob?.jobNumber ?? "—"}
+                  <br />
+                  Product: {currentJob?.productCode ?? "—"}
+                  <br />
+                  Cycle: {m.cycleTimeSec ?? "—"} s · Shot #{m.shotCount ?? "—"}
+                  <br />
+                  Good/Reject: {currentJob ? `${currentJob.goodQty} / ${currentJob.rejectQty}` : "— / —"}
+                </div>
+                <div style={{ fontSize: 12, color: "#57606a", marginTop: 6 }}>
+                  last seen: {m.lastSeenAt ? new Date(m.lastSeenAt).toLocaleTimeString() : "-"}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           {machines.length === 0 && <div>No machines registered yet.</div>}
         </div>
       </section>
@@ -115,14 +169,49 @@ export default function OperatorView() {
           <input
             value={jobQuery}
             onChange={(e) => setJobQuery(e.target.value)}
-            placeholder="Job Number"
-            style={{ padding: 6 }}
+            placeholder="Job Number contains… (blank = most recent)"
+            style={{ padding: 6, width: 320 }}
           />
           <button type="submit">Search</button>
         </form>
         {jobError && <div style={{ color: "#cf222e" }}>{jobError}</div>}
+        <table cellPadding={6} style={{ borderCollapse: "collapse", width: "100%", marginTop: 8 }}>
+          <thead>
+            <tr style={{ textAlign: "left", borderBottom: "1px solid #d0d7de" }}>
+              <th>Job Number</th>
+              <th>Machine</th>
+              <th>Product</th>
+              <th>Started</th>
+              <th>Status</th>
+              <th>Good / Reject</th>
+            </tr>
+          </thead>
+          <tbody>
+            {jobResults.map((j) => (
+              <tr
+                key={j.jobNumber}
+                onClick={() => openJob(j.jobNumber)}
+                style={{ borderBottom: "1px solid #eaeef2", cursor: "pointer" }}
+              >
+                <td>{j.jobNumber}</td>
+                <td>{j.machineId}</td>
+                <td>{j.productCode}</td>
+                <td>{new Date(j.startTime).toLocaleString()}</td>
+                <td>{j.status}</td>
+                <td>
+                  {j.goodQty} / {j.rejectQty}
+                </td>
+              </tr>
+            ))}
+            {jobResults.length === 0 && (
+              <tr>
+                <td colSpan={6}>No jobs found.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
         {job && (
-          <pre style={{ background: "#f6f8fa", padding: 12, borderRadius: 8 }}>
+          <pre style={{ background: "#f6f8fa", padding: 12, borderRadius: 8, marginTop: 12 }}>
             {JSON.stringify(job, null, 2)}
           </pre>
         )}

@@ -3,7 +3,18 @@ import { useEffect, useRef } from "react";
 const WS_URL = import.meta.env.VITE_WS_URL;
 
 export type LiveEvent =
-  | { event: "telemetry"; data: { machineId: string; status: string; timestamp: string } }
+  | {
+      event: "telemetry";
+      data: {
+        machineId: string;
+        status: string;
+        timestamp: string;
+        cycleTimeSec?: number;
+        shotCount?: number;
+        injectionPressureBar?: number;
+        barrelTemperatureC?: number;
+      };
+    }
   | { event: "job"; data: { machineId: string; jobNumber: string; event: string } }
   | { event: "alarm"; data: { machineId: string; alarmCode: string; event: string } }
   | { event: "status"; data: { machineId: string; status: string } };

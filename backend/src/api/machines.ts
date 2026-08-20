@@ -23,6 +23,21 @@ machinesRouter.get("/machines/:id/history", async (req, res) => {
   res.json(telemetry);
 });
 
+machinesRouter.get("/machines/:id/events", async (req, res) => {
+  const { from, to } = req.query;
+  const events = await prisma.machineStatusEvent.findMany({
+    where: {
+      machineId: req.params.id,
+      changedAt: {
+        gte: from ? new Date(String(from)) : undefined,
+        lte: to ? new Date(String(to)) : undefined,
+      },
+    },
+    orderBy: { changedAt: "desc" },
+  });
+  res.json(events);
+});
+
 machinesRouter.get("/machines/:id/alarms", async (req, res) => {
   const { from, to } = req.query;
   const alarms = await prisma.alarm.findMany({

@@ -10,12 +10,16 @@ const createMachineSchema = z.object({
   machineName: z.string().min(1),
   ratedPowerKw: z.number().optional(),
   laborCostPerHour: z.number().optional(),
+  targetCycleTimeSec: z.number().optional(),
   createdBy: z.string().optional(),
 });
 
 const patchMachineSchema = z.object({
   machineName: z.string().min(1).optional(),
   isActive: z.boolean().optional(),
+  ratedPowerKw: z.number().nullable().optional(),
+  laborCostPerHour: z.number().nullable().optional(),
+  targetCycleTimeSec: z.number().nullable().optional(),
 });
 
 // New machines are inserted here, not hardcoded — MQTT wildcard subscription
@@ -50,9 +54,17 @@ adminRouter.patch("/admin/machines/:id", async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
+  const data: Prisma.MachineUpdateInput = { ...parsed.data };
+  // Deactivating stops MQTT ingestion for this machine (see subscriber.ts), so
+  // its status would otherwise stay frozen at whatever it last was (e.g. RUN).
+  // Reactivating clears it back to OFFLINE until new telemetry actually arrives,
+  // rather than showing the stale pre-deactivation status.
+  if (parsed.data.isActive === false) data.status = "INACTIVE";
+  if (parsed.data.isActive === true) data.status = "OFFLINE";
+
   const machine = await prisma.machine.update({
     where: { machineId: req.params.id },
-    data: parsed.data,
+    data,
   });
   res.json(machine);
 });

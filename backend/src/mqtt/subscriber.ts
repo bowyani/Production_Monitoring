@@ -45,6 +45,10 @@ async function isRegisteredMachine(machineId: string) {
     console.warn(`[mqtt] dropping message for unregistered machineId=${machineId}`);
     return null;
   }
+  if (!machine.isActive) {
+    console.warn(`[mqtt] dropping message for deactivated machineId=${machineId}`);
+    return null;
+  }
   return machine;
 }
 
