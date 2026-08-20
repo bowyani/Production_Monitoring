@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Machine {
+  machineId        String    @id @map("machine_id")
+  machineName      String    @map("machine_name")
+  status           String    @default("OFFLINE")
+  lastSeenAt       DateTime? @map("last_seen_at")
+  isActive         Boolean   @default(true) @map("is_active")
+  ratedPowerKw     Decimal?  @map("machine_rated_power_kw") @db.Decimal(8, 2)
+  laborCostPerHour Decimal?  @map("labor_cost_per_hour") @db.Decimal(10, 2)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  createdBy        String?   @map("created_by")
+
+  telemetry    MachineTelemetry[]
+  statusEvents MachineStatusEvent[]
+  jobs         ProductionJob[]
+  alarms       Alarm[]
+
+  @@map("machines")
+}
+
+model MachineTelemetry {
+  id                   BigInt   @id @default(autoincrement())
+  machineId            String   @map("machine_id")
+  timestamp            DateTime
+  status               String
+  cycleTimeSec         Decimal? @map("cycle_time_sec") @db.Decimal(6, 2)
+  shotCount            Int?     @map("shot_count")
+  injectionPressureBar Decimal? @map("injection_pressure_bar") @db.Decimal(6, 2)
+  barrelTemperatureC   Decimal? @map("barrel_temperature_c") @db.Decimal(6, 2)
+
+  machine Machine @relation(fields: [machineId], references: [machineId])
+
+  @@index([machineId, timestamp])
+  @@map("machine_telemetry")
+}
+
+model MachineStatusEvent {
+  id         BigInt   @id @default(autoincrement())
+  machineId  String   @map("machine_id")
+  fromStatus String?  @map("from_status")
+  toStatus   String   @map("to_status")
+  changedAt  DateTime @map("changed_at")
+
+  machine Machine @relation(fields: [machineId], references: [machineId])
+
+  @@index([machineId, changedAt])
+  @@map("machine_status_events")
+}
+
+model ProductionJob {
+  jobNumber       String    @id @map("job_number")
+  machineId       String    @map("machine_id")
+  productCode     String    @map("product_code")
+  moldId          String?   @map("mold_id")
+  recipeId        String?   @map("recipe_id")
+  startTime       DateTime  @map("start_time")
+  endTime         DateTime? @map("end_time")
+  goodQty         Int       @default(0) @map("good_qty")
+  rejectQty       Int       @default(0) @map("reject_qty")
+  startupScrapQty Int       @default(0) @map("startup_scrap_qty")
+  status          String    @default("RUNNING")
+
+  machine Machine @relation(fields: [machineId], references: [machineId])
+  alarms  Alarm[]
+
+  @@index([machineId])
+  @@map("production_jobs")
+}
+
+model Alarm {
+  id               BigInt    @id @default(autoincrement())
+  machineId        String    @map("machine_id")
+  jobNumber        String?   @map("job_number")
+  alarmCode        String    @map("alarm_code")
+  alarmMessage     String    @map("alarm_message")
+  alarmTimestamp   DateTime  @map("alarm_timestamp")
+  clearedTimestamp DateTime? @map("cleared_timestamp")
+
+  machine Machine        @relation(fields: [machineId], references: [machineId])
+  job     ProductionJob? @relation(fields: [jobNumber], references: [jobNumber])
+
+  @@index([machineId, alarmTimestamp])
+  @@map("alarms")
+}
