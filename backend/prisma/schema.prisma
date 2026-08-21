@@ -7,31 +7,59 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Operational registry — who's connected, what state it's in, whether IT
+// has it turned on. Asset/spec data (name, model, cost, maintenance interval,
+// vendor, location...) intentionally does NOT live here anymore: it's owned
+// by ErpMachineAsset so there's exactly one place to edit it. A Machine is
+// always created FROM an existing ErpMachineAsset (Admin picks one — see
+// admin.ts) rather than having its own copy that could drift out of sync.
 model Machine {
-  machineId        String    @id @map("machine_id")
-  machineName      String    @map("machine_name")
-  machineModel     String?   @map("machine_model")
-  status           String    @default("OFFLINE")
-  lastSeenAt       DateTime? @map("last_seen_at")
-  isActive         Boolean   @default(true) @map("is_active")
+  machineId         String    @id @map("machine_id")
+  status            String    @default("OFFLINE")
+  lastSeenAt        DateTime? @map("last_seen_at")
+  isActive          Boolean   @default(true) @map("is_active")
   // "MQTT" = connected machine/simulator publishing telemetry directly.
   // "MANUAL" = legacy machine with no data connection — history comes only
   // from CSV import (see GAP_ANALYSIS §1.4 "manual data entry fallback").
-  dataSource       String    @default("MQTT") @map("data_source")
-  ratedPowerKw     Decimal?  @map("machine_rated_power_kw") @db.Decimal(8, 2)
-  laborCostPerHour Decimal?  @map("labor_cost_per_hour") @db.Decimal(10, 2)
-  targetCycleTimeSec Decimal? @map("target_cycle_time_sec") @db.Decimal(6, 2)
-  maintenanceIntervalHours Decimal? @map("maintenance_interval_hours") @db.Decimal(8, 2)
-  lastMaintenanceAt DateTime @default(now()) @map("last_maintenance_at")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  createdBy        String?   @map("created_by")
+  dataSource        String    @default("MQTT") @map("data_source")
+  lastMaintenanceAt DateTime  @default(now()) @map("last_maintenance_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  createdBy         String?   @map("created_by")
 
+  asset        ErpMachineAsset       @relation(fields: [machineId], references: [assetId])
   telemetry    MachineTelemetry[]
   statusEvents MachineStatusEvent[]
   jobs         ProductionJob[]
   alarms       Alarm[]
 
   @@map("machines")
+}
+
+// Mock ERP master data for machine assets — same idea as ProductSku below,
+// just for equipment instead of products. This is the single source of truth
+// for "what is this machine, what does it cost to run, when's it due for
+// maintenance, who sold it to us" — edited only from the ERP page. Admin's
+// "register new machine" flow picks a row here by assetId instead of typing
+// these fields in free-text, which is what used to let the same physical
+// machine end up with mismatched specs registered in two places.
+model ErpMachineAsset {
+  assetId                  String    @id @map("asset_id")
+  machineName              String    @map("machine_name")
+  machineModel             String?   @map("machine_model")
+  ratedPowerKw             Decimal?  @map("rated_power_kw") @db.Decimal(8, 2)
+  laborCostPerHour         Decimal?  @map("labor_cost_per_hour") @db.Decimal(10, 2)
+  targetCycleTimeSec       Decimal?  @map("target_cycle_time_sec") @db.Decimal(6, 2)
+  maintenanceIntervalHours Decimal?  @map("maintenance_interval_hours") @db.Decimal(8, 2)
+  vendorName               String?   @map("vendor_name")
+  purchaseDate             DateTime? @map("purchase_date")
+  location                 String?
+  manufacturerPhone        String?   @map("manufacturer_phone")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+
+  machine Machine?
+
+  @@map("erp_machine_assets")
 }
 
 model MachineTelemetry {
@@ -97,6 +125,22 @@ model Alarm {
 
   @@index([machineId, alarmTimestamp])
   @@map("alarms")
+}
+
+// Mock ERP master data: assumed sell price / material cost per SKU (product
+// code). There's no real ERP integration (see README Automation Pyramid —
+// this system sits at Level 2, ERP is Level 4), so this is a small
+// admin-editable price book that lets the Executive KPI / ERP views turn
+// good/reject quantities into revenue, cost, and margin for illustration.
+model ProductSku {
+  productCode            String   @id @map("product_code")
+  description            String?
+  unitPriceThb           Decimal  @map("unit_price_thb") @db.Decimal(10, 2)
+  materialCostPerUnitThb Decimal? @map("material_cost_per_unit_thb") @db.Decimal(10, 2)
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  @@map("product_skus")
 }
 
 // Programmatic log of who changed what in Admin (machine config, activation,

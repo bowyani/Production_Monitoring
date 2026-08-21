@@ -15,6 +15,31 @@ export type Machine = {
   lastMaintenanceAt: string;
   runHoursSinceMaintenance?: number;
   maintenanceDue?: boolean;
+  vendorName: string | null;
+  purchaseDate: string | null;
+  location: string | null;
+  manufacturerPhone: string | null;
+};
+
+// ERP master data for machine assets (schema.prisma ErpMachineAsset) — the
+// pick-list Admin registers machines from, and the only place these fields
+// are editable. `registered` reflects whether an operational Machine already
+// exists for this assetId (see GET /erp/machine-assets).
+export type ErpMachineAsset = {
+  assetId: string;
+  machineName: string;
+  machineModel: string | null;
+  ratedPowerKw: number | null;
+  laborCostPerHour: number | null;
+  targetCycleTimeSec: number | null;
+  maintenanceIntervalHours: number | null;
+  vendorName: string | null;
+  purchaseDate: string | null;
+  location: string | null;
+  manufacturerPhone: string | null;
+  createdAt: string;
+  updatedAt: string;
+  registered: boolean;
 };
 
 export type Alarm = {
@@ -98,6 +123,96 @@ export type KpiSummary = {
   };
 };
 
+export type ProductSku = {
+  productCode: string;
+  description: string | null;
+  unitPriceThb: number;
+  materialCostPerUnitThb: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type JobOrder = {
+  jobNumber: string;
+  machineId: string;
+  machineName: string;
+  productCode: string;
+  status: string;
+  startTime: string;
+  endTime: string | null;
+  goodQty: number;
+  rejectQty: number;
+  startupScrapQty: number;
+  runtimeHours: number;
+  unitPriceThb: number | null;
+  materialCostPerUnitThb: number | null;
+  revenueThb: number | null;
+  materialCostThb: number | null;
+  laborCostThb: number | null;
+  marginThb: number | null;
+};
+
+export type ErpRollup = {
+  key: string;
+  jobCount: number;
+  goodQty: number;
+  rejectQty: number;
+  revenueThb: number | null;
+  materialCostThb: number | null;
+  laborCostThb: number | null;
+  marginThb: number | null;
+  marginPerHourThb: number | null;
+  rejectMaterialLossThb: number | null;
+};
+
+export type ErpSummary = {
+  from: string;
+  to: string;
+  unpricedJobCount: number;
+  totals: Omit<ErpRollup, "key" | "jobCount" | "rejectMaterialLossThb">;
+  bySku: ErpRollup[];
+  byMachine: ErpRollup[];
+};
+
+export type MaintenanceReason = { alarmCode: string; alarmMessage: string; count: number; hours: number };
+
+export type MachineMaintenance = {
+  machineId: string;
+  machineName: string;
+  machineModel: string | null;
+  dataSource: "MQTT" | "MANUAL";
+  runHoursSinceMaintenance: number;
+  maintenanceIntervalHours: number | null;
+  pctOfInterval: number | null;
+  maintenanceDue: boolean;
+  statusHours: Record<string, number> | null;
+  intentionalDowntimeHours: number | null;
+  errorDowntimeHours: number | null;
+  offlineHours: number | null;
+  otherDowntimeHours: number | null;
+  alarmCount: number;
+  topReasons: MaintenanceReason[];
+};
+
+export type ModelRollup = {
+  machineModel: string;
+  machineCount: number;
+  totalErrorDowntimeHours: number;
+  totalIntentionalDowntimeHours: number;
+  totalOfflineHours: number;
+  totalOtherDowntimeHours: number;
+  totalAlarmCount: number;
+  machinesOverdue: number;
+  topReasons: MaintenanceReason[];
+};
+
+export type MaintenanceOverview = {
+  from: string;
+  to: string;
+  machines: MachineMaintenance[];
+  byModel: ModelRollup[];
+};
+
 export type AuditLogEntry = {
   id: string;
   actor: string;
@@ -172,40 +287,59 @@ export const api = {
     request<Alarm[]>(`/machines/${encodeURIComponent(machineId)}/alarms${qs({ from, to })}`),
   getKpiSummary: (from?: string, to?: string) => request<KpiSummary>(`/kpi/summary${qs({ from, to })}`),
   adminListMachines: () => request<Machine[]>("/admin/machines"),
-  adminCreateMachine: (data: {
-    machineId: string;
-    machineName: string;
-    machineModel?: string;
-    dataSource?: "MQTT" | "MANUAL";
-    ratedPowerKw?: number;
-    laborCostPerHour?: number;
-    targetCycleTimeSec?: number;
-    maintenanceIntervalHours?: number;
-  }) => request<Machine & { simulator?: { ok: boolean; reason?: string; reused?: boolean } }>("/admin/machines", {
-    method: "POST",
-    body: JSON.stringify(data),
-  }),
-  adminPatchMachine: (
-    machineId: string,
-    data: {
-      machineName?: string;
-      machineModel?: string | null;
-      isActive?: boolean;
-      ratedPowerKw?: number | null;
-      laborCostPerHour?: number | null;
-      targetCycleTimeSec?: number | null;
-      maintenanceIntervalHours?: number | null;
-    }
-  ) =>
+  adminCreateMachine: (data: { assetId: string; dataSource?: "MQTT" | "MANUAL" }) =>
+    request<Machine & { simulator?: { ok: boolean; reason?: string; reused?: boolean } }>("/admin/machines", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  adminPatchMachine: (machineId: string, data: { isActive?: boolean }) =>
     request<Machine & { simulator?: { ok: boolean; reason?: string } }>(
       `/admin/machines/${encodeURIComponent(machineId)}`,
       { method: "PATCH", body: JSON.stringify(data) }
     ),
   adminLogMaintenance: (machineId: string) =>
     request<Machine>(`/admin/machines/${encodeURIComponent(machineId)}/maintenance`, { method: "POST" }),
+  getMachineAssets: () => request<ErpMachineAsset[]>("/erp/machine-assets"),
+  setMachineAsset: (
+    assetId: string,
+    data: {
+      machineName: string;
+      machineModel?: string;
+      ratedPowerKw?: number;
+      laborCostPerHour?: number;
+      targetCycleTimeSec?: number;
+      maintenanceIntervalHours?: number;
+      vendorName?: string;
+      purchaseDate?: string;
+      location?: string;
+      manufacturerPhone?: string;
+    }
+  ) =>
+    request<ErpMachineAsset>(`/erp/machine-assets/${encodeURIComponent(assetId)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteMachineAsset: (assetId: string) =>
+    fetch(`${API_BASE}/erp/machine-assets/${encodeURIComponent(assetId)}`, { method: "DELETE" }),
   getAuditLog: (params: { targetId?: string; action?: string; limit?: string }) =>
     request<AuditLogEntry[]>(`/admin/audit-log${qs(params)}`),
   getSystemStats: () => request<SystemStats>("/admin/system-stats"),
   importJobs: (machineId: string, csvText: string) =>
     request<ImportResult>("/admin/import/jobs", { method: "POST", body: JSON.stringify({ machineId, csvText }) }),
+  getSkus: () => request<ProductSku[]>("/erp/skus"),
+  setSkuPrice: (
+    productCode: string,
+    data: { description?: string; unitPriceThb: number; materialCostPerUnitThb?: number }
+  ) =>
+    request<ProductSku>(`/erp/skus/${encodeURIComponent(productCode)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteSku: (productCode: string) =>
+    fetch(`${API_BASE}/erp/skus/${encodeURIComponent(productCode)}`, { method: "DELETE" }),
+  getJobOrders: (params: { from?: string; to?: string; machineId?: string; productCode?: string; limit?: string }) =>
+    request<JobOrder[]>(`/erp/job-orders${qs(params)}`),
+  getErpSummary: (from?: string, to?: string) => request<ErpSummary>(`/erp/summary${qs({ from, to })}`),
+  getMaintenanceOverview: (from?: string, to?: string) =>
+    request<MaintenanceOverview>(`/maintenance/overview${qs({ from, to })}`),
 };

@@ -4,8 +4,11 @@ import { prisma } from "../db/client";
 export const machinesRouter = Router();
 
 machinesRouter.get("/machines", async (_req, res) => {
-  const machines = await prisma.machine.findMany({ where: { isActive: true } });
-  res.json(machines);
+  const machines = await prisma.machine.findMany({ where: { isActive: true }, include: { asset: true } });
+  // Flattened so every other view (Operator/History/KPI/Import) keeps reading
+  // machine.machineName etc. unchanged even though storage moved to
+  // ErpMachineAsset — see admin.ts's flattenAsset for the same shape.
+  res.json(machines.map(({ asset, ...m }) => ({ ...m, ...asset, machineId: m.machineId })));
 });
 
 machinesRouter.get("/machines/:id/history", async (req, res) => {

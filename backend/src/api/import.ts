@@ -39,6 +39,27 @@ function parseCsv(text: string): { header: string[]; rows: string[][] } {
   return { header, rows };
 }
 
+function parseNonNegativeInt(value: string): number | null {
+  if (!/^\d+$/.test(value.trim())) return null;
+  return Number(value);
+}
+
+type ValidRow = {
+  jobNumber: string;
+  data: {
+    machineId: string;
+    productCode: string;
+    moldId: string | null;
+    recipeId: string | null;
+    startTime: Date;
+    endTime: Date | null;
+    goodQty: number;
+    rejectQty: number;
+    startupScrapQty: number;
+    status: string;
+  };
+};
+
 importRouter.post("/admin/import/jobs", async (req, res) => {
   const parsed = importSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -63,54 +84,108 @@ importRouter.post("/admin/import/jobs", async (req, res) => {
     return;
   }
 
-  let created = 0;
-  let updated = 0;
+  // Validate every row before writing anything — a bad row anywhere in the
+  // file rejects the whole import. Partial imports would leave an operator
+  // unsure which of their rows actually landed, which defeats the point of
+  // a fallback meant to replace an error-prone paper process.
+  const validRows: ValidRow[] = [];
   const failed: { row: number; error: string }[] = [];
+  const seenJobNumbers = new Set<string>();
 
   for (let i = 0; i < rows.length; i++) {
+    const rowNum = i + 2; // header is row 1, so first data row is row 2
     const cells = rows[i];
     if (cells.length !== header.length) {
-      failed.push({ row: i + 2, error: `expected ${header.length} columns, got ${cells.length}` });
+      failed.push({ row: rowNum, error: `expected ${header.length} columns, got ${cells.length}` });
       continue;
     }
     const record = Object.fromEntries(header.map((h, idx) => [h, cells[idx]]));
-    try {
-      const startTime = new Date(record.startTime);
-      if (isNaN(startTime.getTime())) throw new Error(`invalid startTime "${record.startTime}"`);
-      const endTime = record.endTime ? new Date(record.endTime) : null;
-      if (endTime && isNaN(endTime.getTime())) throw new Error(`invalid endTime "${record.endTime}"`);
+    const rowErrors: string[] = [];
 
-      const data = {
+    if (!record.jobNumber) {
+      rowErrors.push("jobNumber is required");
+    } else if (seenJobNumbers.has(record.jobNumber)) {
+      rowErrors.push(`duplicate jobNumber "${record.jobNumber}" (already used earlier in this file)`);
+    } else {
+      seenJobNumbers.add(record.jobNumber);
+    }
+
+    if (!record.productCode) rowErrors.push("productCode is required");
+
+    const startTime = record.startTime ? new Date(record.startTime) : null;
+    if (!startTime || isNaN(startTime.getTime())) {
+      rowErrors.push(`invalid startTime "${record.startTime}" (expected ISO 8601, e.g. 2026-08-19T08:00:00Z)`);
+    }
+
+    let endTime: Date | null = null;
+    if (record.endTime) {
+      endTime = new Date(record.endTime);
+      if (isNaN(endTime.getTime())) {
+        rowErrors.push(`invalid endTime "${record.endTime}" (expected ISO 8601, e.g. 2026-08-19T16:00:00Z)`);
+      }
+    }
+
+    const goodQty = parseNonNegativeInt(record.goodQty ?? "");
+    if (goodQty === null) rowErrors.push(`invalid goodQty "${record.goodQty}" (must be a whole number ≥ 0)`);
+
+    const rejectQty = parseNonNegativeInt(record.rejectQty ?? "");
+    if (rejectQty === null) rowErrors.push(`invalid rejectQty "${record.rejectQty}" (must be a whole number ≥ 0)`);
+
+    let startupScrapQty = 0;
+    if (record.startupScrapQty) {
+      const v = parseNonNegativeInt(record.startupScrapQty);
+      if (v === null) {
+        rowErrors.push(`invalid startupScrapQty "${record.startupScrapQty}" (must be a whole number ≥ 0)`);
+      } else {
+        startupScrapQty = v;
+      }
+    }
+
+    if (rowErrors.length > 0) {
+      failed.push({ row: rowNum, error: rowErrors.join("; ") });
+      continue;
+    }
+
+    validRows.push({
+      jobNumber: record.jobNumber,
+      data: {
         machineId,
         productCode: record.productCode,
         moldId: record.moldId || null,
         recipeId: record.recipeId || null,
-        startTime,
+        startTime: startTime as Date,
         endTime,
-        goodQty: Number(record.goodQty) || 0,
-        rejectQty: Number(record.rejectQty) || 0,
-        startupScrapQty: Number(record.startupScrapQty) || 0,
+        goodQty: goodQty as number,
+        rejectQty: rejectQty as number,
+        startupScrapQty,
         status: record.status || (endTime ? "DONE" : "RUNNING"),
-      };
+      },
+    });
+  }
 
-      const existing = await prisma.productionJob.findUnique({ where: { jobNumber: record.jobNumber } });
-      await prisma.productionJob.upsert({
-        where: { jobNumber: record.jobNumber },
-        create: { jobNumber: record.jobNumber, ...data },
-        update: data,
-      });
-      if (existing) updated++;
-      else created++;
-    } catch (err) {
-      failed.push({ row: i + 2, error: (err as Error).message });
-    }
+  if (failed.length > 0) {
+    res.json({ created: 0, updated: 0, failed, totalRows: rows.length });
+    return;
+  }
+
+  let created = 0;
+  let updated = 0;
+  for (const row of validRows) {
+    const existing = await prisma.productionJob.findUnique({ where: { jobNumber: row.jobNumber } });
+    await prisma.productionJob.upsert({
+      where: { jobNumber: row.jobNumber },
+      create: { jobNumber: row.jobNumber, ...row.data },
+      update: row.data,
+    });
+    if (existing) updated++;
+    else created++;
   }
 
   await logAudit("admin-ui", "JOBS_IMPORTED", "machine", machineId, {
     created,
     updated,
-    failedCount: failed.length,
+    totalRows: rows.length,
   });
 
-  res.json({ created, updated, failed, totalRows: rows.length });
+  res.json({ created, updated, failed: [], totalRows: rows.length });
 });

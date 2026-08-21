@@ -1,8 +1,23 @@
 import { useEffect, useState } from "react";
 import { api, type Machine, type ImportResult } from "../lib/api";
+import { usePagination } from "../lib/usePagination";
+import Pagination from "../components/Pagination";
 
-const TEMPLATE = `jobNumber,productCode,moldId,recipeId,startTime,endTime,goodQty,rejectQty,startupScrapQty,status
-JOB-LEGACY-001,PVC-90-ELBOW,MOLD-3,RECIPE-2,2026-08-19T08:00:00Z,2026-08-19T16:00:00Z,410,12,3,DONE`;
+const TEMPLATE_CSV =
+  "jobNumber,productCode,moldId,recipeId,startTime,endTime,goodQty,rejectQty,startupScrapQty,status\n" +
+  "JOB-LEGACY-001,PVC-90-ELBOW,MOLD-3,RECIPE-2,2026-08-19T08:00:00Z,2026-08-19T16:00:00Z,410,12,3,DONE\n";
+
+function downloadTemplate() {
+  const blob = new Blob([TEMPLATE_CSV], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "production_jobs_import_template.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 export default function ImportView() {
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -28,6 +43,8 @@ export default function ImportView() {
     const file = e.target.files?.[0];
     if (!file) return;
     setFileName(file.name);
+    setResult(null);
+    setError(null);
     const reader = new FileReader();
     reader.onload = () => setCsvText(String(reader.result ?? ""));
     reader.readAsText(file);
@@ -47,20 +64,32 @@ export default function ImportView() {
     }
   }
 
+  const failedPage = usePagination(result?.failed ?? [], 10);
+
   return (
-    <div style={{ fontFamily: "sans-serif", padding: 24, display: "grid", gap: 24, maxWidth: 800 }}>
+    <div className="app-shell" style={{ maxWidth: 800 }}>
       <h1>Import — Legacy / Manual Data</h1>
       <p style={{ fontSize: 13, color: "#57606a" }}>
         For machines that can't connect at all — the paper/Excel fallback GAP_ANALYSIS §1.4 calls out as
         required for a real 200-machine factory ("โรงงานจริงมีเครื่องเก่าที่เชื่อมไม่ได้ปนอยู่ — ต้องมี
         manual data entry fallback"). This writes directly into <code>production_jobs</code>, bypassing MQTT
-        entirely.
+        entirely. If any row in the file is invalid, <strong>nothing is imported</strong> — fix the file and
+        re-upload.
       </p>
+
+      <div>
+        <button type="button" onClick={downloadTemplate}>
+          ⬇ Download CSV Template
+        </button>
+        <span style={{ fontSize: 12, color: "#57606a", marginLeft: 8 }}>
+          Give this to the operator to fill in — column headers and one example row.
+        </span>
+      </div>
 
       <form onSubmit={submit} style={{ display: "grid", gap: 12 }}>
         <label>
           Machine{" "}
-          <select value={machineId} onChange={(e) => setMachineId(e.target.value)} style={{ padding: 6 }}>
+          <select value={machineId} onChange={(e) => setMachineId(e.target.value)}>
             {machines.map((m) => (
               <option key={m.machineId} value={m.machineId}>
                 {m.machineId} — {m.machineName} ({m.dataSource})
@@ -74,54 +103,55 @@ export default function ImportView() {
           {fileName && <span style={{ fontSize: 12, color: "#57606a", marginLeft: 8 }}>{fileName}</span>}
         </label>
 
-        <label>
-          Or paste CSV directly
-          <textarea
-            value={csvText}
-            onChange={(e) => setCsvText(e.target.value)}
-            rows={8}
-            style={{ width: "100%", fontFamily: "monospace", fontSize: 12, padding: 8 }}
-            placeholder={TEMPLATE}
-          />
-        </label>
-
-        <div>
-          <button type="button" onClick={() => setCsvText(TEMPLATE)} style={{ fontSize: 12 }}>
-            Fill example template
-          </button>
-        </div>
-
         <button type="submit" disabled={busy || !machineId || !csvText.trim()}>
           {busy ? "Importing…" : "Import"}
         </button>
       </form>
 
-      {error && <div style={{ color: "#cf222e" }}>{error}</div>}
+      {error && <div className="notice notice-error">{error}</div>}
 
       {result && (
         <section>
           <h2>Result</h2>
-          <p>
-            {result.created} created, {result.updated} updated, {result.failed.length} failed out of{" "}
-            {result.totalRows} rows.
-          </p>
+          {result.failed.length > 0 ? (
+            <p className="notice notice-error" style={{ display: "inline-block" }}>
+              Import rejected — {result.failed.length} of {result.totalRows} row(s) failed validation.{" "}
+              <strong>Nothing was imported.</strong> Fix the rows below and re-upload.
+            </p>
+          ) : (
+            <p className="notice notice-success" style={{ display: "inline-block" }}>
+              {result.created} created, {result.updated} updated — all {result.totalRows} row(s) imported
+              successfully.
+            </p>
+          )}
           {result.failed.length > 0 && (
-            <table cellPadding={6} style={{ borderCollapse: "collapse", width: "100%" }}>
-              <thead>
-                <tr style={{ textAlign: "left", borderBottom: "1px solid #d0d7de" }}>
-                  <th>Row</th>
-                  <th>Error</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.failed.map((f) => (
-                  <tr key={f.row} style={{ borderBottom: "1px solid #eaeef2" }}>
-                    <td>{f.row}</td>
-                    <td style={{ color: "#cf222e" }}>{f.error}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="table-card">
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Row</th>
+                      <th>Error</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {failedPage.pageItems.map((f) => (
+                      <tr key={f.row}>
+                        <td>{f.row}</td>
+                        <td style={{ color: "#cf222e" }}>{f.error}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <Pagination
+                page={failedPage.page}
+                pageCount={failedPage.pageCount}
+                total={failedPage.total}
+                pageSize={failedPage.pageSize}
+                onPageChange={failedPage.setPage}
+              />
+            </div>
           )}
         </section>
       )}
@@ -131,7 +161,8 @@ export default function ImportView() {
         <p style={{ fontSize: 13, color: "#57606a" }}>
           Required: <code>jobNumber, productCode, startTime, goodQty, rejectQty</code>. Optional:{" "}
           <code>moldId, recipeId, endTime, startupScrapQty, status</code>. Plain comma-separated, no quoted
-          fields — a value with a comma in it will misalign columns.
+          fields — a value with a comma in it will misalign columns. <code>startTime</code>/
+          <code>endTime</code> must be ISO 8601 (e.g. <code>2026-08-19T08:00:00Z</code>).
         </p>
       </section>
     </div>

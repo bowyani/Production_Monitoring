@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type Machine, type Alarm, type ProductionJob } from "../lib/api";
 import { useLiveSocket } from "../lib/useLiveSocket";
+import { usePagination } from "../lib/usePagination";
+import Pagination from "../components/Pagination";
 
 const STATUS_COLOR: Record<string, string> = {
   RUN: "#1a7f37",
@@ -9,6 +11,18 @@ const STATUS_COLOR: Record<string, string> = {
   OFFLINE: "#57606a",
   INACTIVE: "#8c959f",
 };
+
+// Machines needing attention should sort to the top of the list so an
+// operator scanning the floor view sees problems first, not last.
+const STATUS_PRIORITY: Record<string, number> = {
+  ALARM: 0,
+  STOP: 1,
+  OFFLINE: 2,
+  RUN: 3,
+  INACTIVE: 4,
+};
+
+const UNASSIGNED_ZONE = "Unassigned";
 
 const JOB_STATUSES = ["RUNNING", "DONE"];
 const SORT_FIELDS: { value: string; label: string }[] = [
@@ -62,6 +76,35 @@ export default function OperatorView() {
     refreshJobs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterMachineId, filterStatus, filterProduct, sortField, sortDir]);
+
+  const machineById = useMemo(() => {
+    const map = new Map<string, LiveMachine>();
+    for (const m of machines) map.set(m.machineId, m);
+    return map;
+  }, [machines]);
+
+  const [zoneFilter, setZoneFilter] = useState<string>("ALL");
+
+  function zoneOf(m: LiveMachine) {
+    return m.location?.trim() || UNASSIGNED_ZONE;
+  }
+
+  // Zone tabs so a floor with many machines (100s, spread across a plant)
+  // can be filtered down to "just my area" instead of one long list.
+  const zones = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const m of machines) counts.set(zoneOf(m), (counts.get(zoneOf(m)) ?? 0) + 1);
+    return [...counts.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [machines]);
+
+  const visibleMachines = useMemo(() => {
+    const filtered = zoneFilter === "ALL" ? machines : machines.filter((m) => zoneOf(m) === zoneFilter);
+    return [...filtered].sort((a, b) => {
+      const pDiff = (STATUS_PRIORITY[a.status] ?? 99) - (STATUS_PRIORITY[b.status] ?? 99);
+      if (pDiff !== 0) return pDiff;
+      return a.machineId.localeCompare(b.machineId);
+    });
+  }, [machines, zoneFilter]);
 
   // The machine grid must show current Job Number/Product/Cycle Time/Good-Reject
   // per Direction.md §4.3, so the current job per machine is looked up here.
@@ -136,92 +179,161 @@ export default function OperatorView() {
     }
   }
 
+  const machinesPage = usePagination(visibleMachines, 10);
+  const alarmsPage = usePagination(alarms, 10);
+  const jobsPage = usePagination(jobResults, 10);
+
   return (
-    <div style={{ fontFamily: "sans-serif", padding: 24, display: "grid", gap: 24 }}>
+    <div className="app-shell">
       <h1>Operator Dashboard</h1>
 
       <section>
         <h2>Machines</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
-          {machines.map((m) => {
-            const currentJob = currentJobByMachine.get(m.machineId);
-            return (
-              <div
-                key={m.machineId}
-                style={{
-                  border: "1px solid #d0d7de",
-                  borderRadius: 8,
-                  padding: 12,
-                  borderLeft: `6px solid ${STATUS_COLOR[m.status] ?? "#57606a"}`,
-                }}
-              >
-                <strong>{m.machineId}</strong>
-                <div>{m.machineName}</div>
-                <div style={{ color: STATUS_COLOR[m.status] ?? "#57606a", fontWeight: 600 }}>{m.status}</div>
-                <div style={{ fontSize: 13, marginTop: 6 }}>
-                  Job: {currentJob?.jobNumber ?? "—"}
-                  <br />
-                  Product: {currentJob?.productCode ?? "—"}
-                  <br />
-                  Cycle: {m.cycleTimeSec ?? "—"} s · Shot #{m.shotCount ?? "—"}
-                  <br />
-                  Good/Reject: {currentJob ? `${currentJob.goodQty} / ${currentJob.rejectQty}` : "— / —"}
-                </div>
-                <div style={{ fontSize: 12, color: "#57606a", marginTop: 6 }}>
-                  last seen: {m.lastSeenAt ? new Date(m.lastSeenAt).toLocaleTimeString() : "-"}
-                </div>
-              </div>
-            );
-          })}
-          {machines.length === 0 && <div>No machines registered yet.</div>}
+
+        <div className="pill-group">
+          <button className={"pill" + (zoneFilter === "ALL" ? " active" : "")} onClick={() => setZoneFilter("ALL")}>
+            All ({machines.length})
+          </button>
+          {zones.map(([zone, count]) => (
+            <button
+              key={zone}
+              className={"pill" + (zoneFilter === zone ? " active" : "")}
+              onClick={() => setZoneFilter(zone)}
+            >
+              📍 {zone} ({count})
+            </button>
+          ))}
+        </div>
+
+        <div className="table-card">
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Machine</th>
+                  <th>Zone</th>
+                  <th>Job</th>
+                  <th>Product</th>
+                  <th>Cycle (s)</th>
+                  <th>Shot #</th>
+                  <th>Good</th>
+                  <th>Reject</th>
+                  <th>Last seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {machinesPage.pageItems.map((m) => {
+                  const currentJob = currentJobByMachine.get(m.machineId);
+                  const color = STATUS_COLOR[m.status] ?? "#57606a";
+                  const isAlarm = m.status === "ALARM";
+                  return (
+                    <tr key={m.machineId} className={isAlarm ? "row-flag" : undefined}>
+                      <td>
+                        <span className="badge" style={{ background: color }}>
+                          {m.status}
+                        </span>
+                      </td>
+                      <td>
+                        <strong>{m.machineId}</strong>
+                        <div style={{ fontSize: 12, color: "#57606a" }}>{m.machineName}</div>
+                      </td>
+                      <td>{m.location ?? "—"}</td>
+                      <td>{currentJob?.jobNumber ?? "—"}</td>
+                      <td>{currentJob?.productCode ?? "—"}</td>
+                      <td>{m.cycleTimeSec ?? "—"}</td>
+                      <td>{m.shotCount ?? "—"}</td>
+                      <td style={{ fontWeight: 600 }}>{currentJob?.goodQty ?? "—"}</td>
+                      <td style={{ fontWeight: 600, color: currentJob && currentJob.rejectQty > 0 ? "#cf222e" : undefined }}>
+                        {currentJob?.rejectQty ?? "—"}
+                      </td>
+                      <td style={{ fontSize: 12, color: "#57606a" }}>
+                        {m.lastSeenAt ? new Date(m.lastSeenAt).toLocaleTimeString() : "-"}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {visibleMachines.length === 0 && (
+                  <tr className="row-empty">
+                    <td colSpan={10}>No machines in this zone.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <Pagination
+            page={machinesPage.page}
+            pageCount={machinesPage.pageCount}
+            total={machinesPage.total}
+            pageSize={machinesPage.pageSize}
+            onPageChange={machinesPage.setPage}
+          />
         </div>
       </section>
 
       <section>
         <h2>Active Alarms</h2>
-        <table cellPadding={6} style={{ borderCollapse: "collapse", width: "100%" }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #d0d7de" }}>
-              <th>Machine</th>
-              <th>Code</th>
-              <th>Message</th>
-              <th>Raised</th>
-            </tr>
-          </thead>
-          <tbody>
-            {alarms.map((a) => (
-              <tr key={a.id} style={{ borderBottom: "1px solid #eaeef2" }}>
-                <td>{a.machineId}</td>
-                <td>{a.alarmCode}</td>
-                <td>{a.alarmMessage}</td>
-                <td>{new Date(a.alarmTimestamp).toLocaleString()}</td>
-              </tr>
-            ))}
-            {alarms.length === 0 && (
-              <tr>
-                <td colSpan={4}>No active alarms.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <div className="table-card">
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Machine</th>
+                  <th>Location</th>
+                  <th>Code</th>
+                  <th>Message</th>
+                  <th>Raised</th>
+                  <th>Manufacturer</th>
+                </tr>
+              </thead>
+              <tbody>
+                {alarmsPage.pageItems.map((a) => {
+                  const m = machineById.get(a.machineId);
+                  return (
+                    <tr key={a.id}>
+                      <td>{a.machineId}</td>
+                      <td>{m?.location ? `📍 ${m.location}` : "—"}</td>
+                      <td>{a.alarmCode}</td>
+                      <td>{a.alarmMessage}</td>
+                      <td>{new Date(a.alarmTimestamp).toLocaleString()}</td>
+                      <td>{m?.manufacturerPhone ? `☎ ${m.manufacturerPhone}` : "—"}</td>
+                    </tr>
+                  );
+                })}
+                {alarms.length === 0 && (
+                  <tr className="row-empty">
+                    <td colSpan={6}>No active alarms.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <Pagination
+            page={alarmsPage.page}
+            pageCount={alarmsPage.pageCount}
+            total={alarmsPage.total}
+            pageSize={alarmsPage.pageSize}
+            onPageChange={alarmsPage.setPage}
+          />
+        </div>
       </section>
 
       <section>
         <h2>Job Lookup</h2>
-        <form onSubmit={searchJob} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <form onSubmit={searchJob} className="toolbar">
           <input
             value={jobQuery}
             onChange={(e) => setJobQuery(e.target.value)}
             placeholder="Job Number contains…"
-            style={{ padding: 6, width: 220 }}
+            style={{ width: 220 }}
           />
           <input
             value={filterProduct}
             onChange={(e) => setFilterProduct(e.target.value)}
             placeholder="Product Code contains…"
-            style={{ padding: 6, width: 180 }}
+            style={{ width: 180 }}
           />
-          <select value={filterMachineId} onChange={(e) => setFilterMachineId(e.target.value)} style={{ padding: 6 }}>
+          <select value={filterMachineId} onChange={(e) => setFilterMachineId(e.target.value)}>
             <option value="">All machines</option>
             {machines.map((m) => (
               <option key={m.machineId} value={m.machineId}>
@@ -229,7 +341,7 @@ export default function OperatorView() {
               </option>
             ))}
           </select>
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ padding: 6 }}>
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
             <option value="">Any status</option>
             {JOB_STATUSES.map((s) => (
               <option key={s} value={s}>
@@ -237,7 +349,7 @@ export default function OperatorView() {
               </option>
             ))}
           </select>
-          <select value={sortField} onChange={(e) => setSortField(e.target.value)} style={{ padding: 6 }}>
+          <select value={sortField} onChange={(e) => setSortField(e.target.value)}>
             {SORT_FIELDS.map((f) => (
               <option key={f.value} value={f.value}>
                 Sort: {f.label}
@@ -249,54 +361,61 @@ export default function OperatorView() {
           </button>
           <button type="submit">Search</button>
         </form>
-        {jobError && <div style={{ color: "#cf222e" }}>{jobError}</div>}
-        <table cellPadding={6} style={{ borderCollapse: "collapse", width: "100%", marginTop: 8 }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #d0d7de" }}>
-              <th style={{ cursor: "pointer" }} onClick={() => toggleSort("jobNumber")}>
-                Job Number{sortArrow("jobNumber")}
-              </th>
-              <th>Machine</th>
-              <th>Product</th>
-              <th style={{ cursor: "pointer" }} onClick={() => toggleSort("startTime")}>
-                Started{sortArrow("startTime")}
-              </th>
-              <th style={{ cursor: "pointer" }} onClick={() => toggleSort("status")}>
-                Status{sortArrow("status")}
-              </th>
-              <th style={{ cursor: "pointer" }} onClick={() => toggleSort("goodQty")}>
-                Good{sortArrow("goodQty")}
-              </th>
-              <th style={{ cursor: "pointer" }} onClick={() => toggleSort("rejectQty")}>
-                Reject{sortArrow("rejectQty")}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {jobResults.map((j) => (
-              <tr
-                key={j.jobNumber}
-                onClick={() => openJob(j.jobNumber)}
-                style={{ borderBottom: "1px solid #eaeef2", cursor: "pointer" }}
-              >
-                <td>{j.jobNumber}</td>
-                <td>{j.machineId}</td>
-                <td>{j.productCode}</td>
-                <td>{new Date(j.startTime).toLocaleString()}</td>
-                <td>{j.status}</td>
-                <td>{j.goodQty}</td>
-                <td>{j.rejectQty}</td>
-              </tr>
-            ))}
-            {jobResults.length === 0 && (
-              <tr>
-                <td colSpan={7}>No jobs found.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        {jobError && <div className="notice notice-error">{jobError}</div>}
+        <div className="table-card">
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ cursor: "pointer" }} onClick={() => toggleSort("jobNumber")}>
+                    Job Number{sortArrow("jobNumber")}
+                  </th>
+                  <th>Machine</th>
+                  <th>Product</th>
+                  <th style={{ cursor: "pointer" }} onClick={() => toggleSort("startTime")}>
+                    Started{sortArrow("startTime")}
+                  </th>
+                  <th style={{ cursor: "pointer" }} onClick={() => toggleSort("status")}>
+                    Status{sortArrow("status")}
+                  </th>
+                  <th style={{ cursor: "pointer" }} onClick={() => toggleSort("goodQty")}>
+                    Good{sortArrow("goodQty")}
+                  </th>
+                  <th style={{ cursor: "pointer" }} onClick={() => toggleSort("rejectQty")}>
+                    Reject{sortArrow("rejectQty")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {jobsPage.pageItems.map((j) => (
+                  <tr key={j.jobNumber} onClick={() => openJob(j.jobNumber)} style={{ cursor: "pointer" }}>
+                    <td>{j.jobNumber}</td>
+                    <td>{j.machineId}</td>
+                    <td>{j.productCode}</td>
+                    <td>{new Date(j.startTime).toLocaleString()}</td>
+                    <td>{j.status}</td>
+                    <td>{j.goodQty}</td>
+                    <td>{j.rejectQty}</td>
+                  </tr>
+                ))}
+                {jobResults.length === 0 && (
+                  <tr className="row-empty">
+                    <td colSpan={7}>No jobs found.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <Pagination
+            page={jobsPage.page}
+            pageCount={jobsPage.pageCount}
+            total={jobsPage.total}
+            pageSize={jobsPage.pageSize}
+            onPageChange={jobsPage.setPage}
+          />
+        </div>
         {job && (
-          <pre style={{ background: "#f6f8fa", padding: 12, borderRadius: 8, marginTop: 12 }}>
+          <pre style={{ background: "#f6f8fa", padding: 12, borderRadius: 8, marginTop: 4 }}>
             {JSON.stringify(job, null, 2)}
           </pre>
         )}

@@ -6,6 +6,8 @@ import { adminRouter } from "./admin";
 import { kpiRouter } from "./kpi";
 import { systemRouter } from "./system";
 import { importRouter } from "./import";
+import { erpRouter } from "./erp";
+import { maintenanceRouter } from "./maintenance";
 
 export const apiV1Router = Router();
 
@@ -16,3 +18,5 @@ apiV1Router.use(adminRouter);
 apiV1Router.use(kpiRouter);
 apiV1Router.use(systemRouter);
 apiV1Router.use(importRouter);
+apiV1Router.use(erpRouter);
+apiV1Router.use(maintenanceRouter);

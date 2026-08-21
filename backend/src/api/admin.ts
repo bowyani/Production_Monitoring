@@ -7,27 +7,25 @@ import { ensureSimulatorContainer, stopSimulatorContainer } from "../docker/simu
 
 export const adminRouter = Router();
 
+// Admin is now "IT system management" — connect/disconnect a machine and
+// watch its live status. It no longer takes asset specs as free text: a
+// machine must already exist as an ErpMachineAsset (see erp.ts), and Admin
+// just picks which asset to bring online. That's what prevents the same
+// physical machine from being registered twice with mismatched specs.
 const createMachineSchema = z.object({
-  machineId: z.string().min(1),
-  machineName: z.string().min(1),
-  machineModel: z.string().optional(),
+  assetId: z.string().min(1),
   dataSource: z.enum(["MQTT", "MANUAL"]).default("MQTT"),
-  ratedPowerKw: z.number().optional(),
-  laborCostPerHour: z.number().optional(),
-  targetCycleTimeSec: z.number().optional(),
-  maintenanceIntervalHours: z.number().optional(),
   createdBy: z.string().optional(),
 });
 
 const patchMachineSchema = z.object({
-  machineName: z.string().min(1).optional(),
-  machineModel: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
-  ratedPowerKw: z.number().nullable().optional(),
-  laborCostPerHour: z.number().nullable().optional(),
-  targetCycleTimeSec: z.number().nullable().optional(),
-  maintenanceIntervalHours: z.number().nullable().optional(),
 });
+
+function flattenAsset<T extends { asset: { machineName: string; machineModel: string | null } }>(machine: T) {
+  const { asset, ...rest } = machine;
+  return { ...rest, ...asset, machineId: (machine as unknown as { machineId: string }).machineId };
+}
 
 // New machines are inserted here, not hardcoded — MQTT wildcard subscription
 // (factory/+/...) means telemetry starts flowing the moment this returns,
@@ -42,18 +40,30 @@ adminRouter.post("/admin/machines", async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
+  const asset = await prisma.erpMachineAsset.findUnique({ where: { assetId: parsed.data.assetId } });
+  if (!asset) {
+    res.status(404).json({ error: `no ERP asset ${parsed.data.assetId} — add it in ERP first` });
+    return;
+  }
   try {
-    const machine = await prisma.machine.create({ data: parsed.data });
+    const machine = await prisma.machine.create({
+      data: {
+        machineId: parsed.data.assetId,
+        dataSource: parsed.data.dataSource,
+        createdBy: parsed.data.createdBy,
+      },
+      include: { asset: true },
+    });
     await logAudit("admin-ui", "MACHINE_CREATED", "machine", machine.machineId, parsed.data);
 
     let simulator: { ok: boolean; reason?: string; reused?: boolean } | undefined;
     if (parsed.data.dataSource === "MQTT") {
-      simulator = await ensureSimulatorContainer(machine.machineId, machine.machineName);
+      simulator = await ensureSimulatorContainer(machine.machineId, asset.machineName);
     }
-    res.status(201).json({ ...machine, simulator });
+    res.status(201).json({ ...flattenAsset(machine), simulator });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-      res.status(409).json({ error: "machineId already registered" });
+      res.status(409).json({ error: "this ERP asset is already registered as a machine" });
       return;
     }
     throw err;
@@ -61,7 +71,7 @@ adminRouter.post("/admin/machines", async (req, res) => {
 });
 
 adminRouter.get("/admin/machines", async (_req, res) => {
-  const machines = await prisma.machine.findMany({ orderBy: { createdAt: "desc" } });
+  const machines = await prisma.machine.findMany({ orderBy: { createdAt: "desc" }, include: { asset: true } });
 
   // Running hours since last maintenance = sum of RUN-duration from status
   // events after lastMaintenanceAt. Same accrual logic as the KPI
@@ -70,9 +80,9 @@ adminRouter.get("/admin/machines", async (_req, res) => {
   const enriched = await Promise.all(
     machines.map(async (m) => {
       const runHoursSinceMaintenance = await computeRunHoursSince(m.machineId, m.lastMaintenanceAt);
-      const intervalHours = m.maintenanceIntervalHours ? Number(m.maintenanceIntervalHours) : null;
+      const intervalHours = m.asset.maintenanceIntervalHours ? Number(m.asset.maintenanceIntervalHours) : null;
       return {
-        ...m,
+        ...flattenAsset(m),
         runHoursSinceMaintenance,
         maintenanceDue: intervalHours != null ? runHoursSinceMaintenance >= intervalHours : false,
       };
@@ -98,6 +108,7 @@ adminRouter.patch("/admin/machines/:id", async (req, res) => {
   const machine = await prisma.machine.update({
     where: { machineId: req.params.id },
     data,
+    include: { asset: true },
   });
   await logAudit(
     "admin-ui",
@@ -119,11 +130,11 @@ adminRouter.patch("/admin/machines/:id", async (req, res) => {
     if (parsed.data.isActive === false) {
       simulator = await stopSimulatorContainer(machine.machineId);
     } else if (parsed.data.isActive === true) {
-      simulator = await ensureSimulatorContainer(machine.machineId, machine.machineName);
+      simulator = await ensureSimulatorContainer(machine.machineId, machine.asset.machineName);
     }
   }
 
-  res.json({ ...machine, simulator });
+  res.json({ ...flattenAsset(machine), simulator });
 });
 
 adminRouter.post("/admin/machines/:id/maintenance", async (req, res) => {
@@ -137,7 +148,7 @@ adminRouter.post("/admin/machines/:id/maintenance", async (req, res) => {
   res.json(machine);
 });
 
-async function computeRunHoursSince(machineId: string, since: Date) {
+export async function computeRunHoursSince(machineId: string, since: Date) {
   const priorEvent = await prisma.machineStatusEvent.findFirst({
     where: { machineId, changedAt: { lte: since } },
     orderBy: { changedAt: "desc" },

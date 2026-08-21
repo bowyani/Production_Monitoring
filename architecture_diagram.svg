@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1420 830" font-family="Noto Sans Thai, Waree, Arial, Helvetica, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1650 1010" font-family="Noto Sans Thai, Waree, Arial, Helvetica, sans-serif">
   <defs>
     <marker id="arrowGray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0L10,5L0,10z" fill="#333333"/>
@@ -6,17 +6,23 @@
     <marker id="arrowPurple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0L10,5L0,10z" fill="#6A1B9A"/>
     </marker>
+    <marker id="arrowOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0L10,5L0,10z" fill="#EF6C00"/>
+    </marker>
+    <marker id="arrowSlate" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0L10,5L0,10z" fill="#455A64"/>
+    </marker>
   </defs>
 
-  <rect x="0" y="0" width="1420" height="830" fill="#FAFAFA"/>
+  <rect x="0" y="0" width="1650" height="1010" fill="#FAFAFA"/>
 
   <!-- Title -->
-  <text x="710" y="32" text-anchor="middle" font-size="22" font-weight="bold" fill="#212121">Production Monitoring System — Architecture Diagram</text>
-  <text x="710" y="52" text-anchor="middle" font-size="13" fill="#616161">Machine Simulator → MQTT Broker → Backend Service → Database &amp; Dashboard</text>
+  <text x="825" y="30" text-anchor="middle" font-size="22" font-weight="bold" fill="#212121">Production Monitoring System — Architecture Diagram</text>
+  <text x="825" y="50" text-anchor="middle" font-size="13" fill="#616161">Machine Simulator → MQTT Broker → Backend Service (+ Docker-managed lifecycle) → Database (Monitoring + mock ERP) → Dashboard</text>
 
   <!-- Docker Compose boundary -->
-  <rect x="30" y="90" width="860" height="700" fill="none" stroke="#9E9E9E" stroke-width="1.5" stroke-dasharray="6,4" rx="10"/>
-  <text x="45" y="112" font-size="12" font-style="italic" fill="#757575">Docker Compose — รันเป็นชุดเดียวกัน (self-contained infra)</text>
+  <rect x="30" y="80" width="890" height="855" fill="none" stroke="#9E9E9E" stroke-width="1.5" stroke-dasharray="6,4" rx="10"/>
+  <text x="45" y="102" font-size="12" font-style="italic" fill="#757575">Docker Compose — รันเป็นชุดเดียวกัน (self-contained infra)</text>
 
   <!-- Machine Simulators -->
   <rect x="60" y="140" width="220" height="65" rx="8" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.5"/>
@@ -34,6 +40,9 @@
   <rect x="60" y="395" width="220" height="50" rx="8" fill="none" stroke="#1565C0" stroke-width="1.2" stroke-dasharray="4,3"/>
   <text x="170" y="417" text-anchor="middle" font-size="11" fill="#0D47A1">+ IMM-0N</text>
   <text x="170" y="432" text-anchor="middle" font-size="10" fill="#0D47A1">(เพิ่มเครื่องได้ไม่จำกัด ผ่าน Admin)</text>
+
+  <text x="60" y="463" font-size="9" font-style="italic" fill="#546E7A">* แต่ละ Simulator self-register asset + เครื่อง ผ่าน REST</text>
+  <text x="60" y="475" font-size="9" font-style="italic" fill="#546E7A">  (PUT /erp/machine-assets, POST /admin/machines) ตอน start</text>
 
   <!-- Arrows: simulators -> broker -->
   <line x1="280" y1="172" x2="335" y2="270" stroke="#333333" stroke-width="1.5" marker-end="url(#arrowGray)"/>
@@ -54,85 +63,158 @@
   <text x="440" y="318" text-anchor="middle" font-size="9.5" fill="#8D6E00">jobData / alarmData + schemaVersion</text>
   <text x="440" y="340" text-anchor="middle" font-size="9.5" fill="#8D6E00">(ทุก message ผ่าน retain/QoS ที่กำหนด)</text>
 
+  <!-- Docker Engine (host) -->
+  <rect x="340" y="400" width="200" height="105" rx="8" fill="#ECEFF1" stroke="#546E7A" stroke-width="1.5"/>
+  <text x="440" y="423" text-anchor="middle" font-size="12" font-weight="bold" fill="#37474F">Docker Engine (Host)</text>
+  <line x1="356" y1="433" x2="524" y2="433" stroke="#546E7A" stroke-width="1"/>
+  <text x="440" y="450" text-anchor="middle" font-size="9.5" fill="#37474F">/var/run/docker.sock (mounted)</text>
+  <text x="440" y="466" text-anchor="middle" font-size="9.5" fill="#37474F">simulator-{machineId} containers</text>
+  <text x="440" y="483" text-anchor="middle" font-size="9" font-style="italic" fill="#607D8B">create/start/stop สั่งโดย Backend</text>
+
   <!-- Arrow broker -> backend -->
   <line x1="540" y1="260" x2="596" y2="260" stroke="#333333" stroke-width="1.5" marker-end="url(#arrowGray)"/>
   <text x="545" y="245" font-size="10" fill="#333333">subscribe</text>
   <text x="545" y="285" font-size="9.5" fill="#333333">factory/+/... (wildcard)</text>
 
   <!-- Backend Service -->
-  <rect x="600" y="140" width="260" height="360" rx="8" fill="#F1F8E9" stroke="#558B2F" stroke-width="1.5"/>
-  <text x="730" y="163" text-anchor="middle" font-size="14" font-weight="bold" fill="#33691E">Backend Service</text>
-  <text x="730" y="180" text-anchor="middle" font-size="11" fill="#33691E">(Node.js / TypeScript)</text>
+  <rect x="600" y="140" width="280" height="380" rx="8" fill="#F1F8E9" stroke="#558B2F" stroke-width="1.5"/>
+  <text x="740" y="163" text-anchor="middle" font-size="14" font-weight="bold" fill="#33691E">Backend Service</text>
+  <text x="740" y="180" text-anchor="middle" font-size="11" fill="#33691E">(Node.js / TypeScript)</text>
 
-  <rect x="616" y="195" width="228" height="52" rx="6" fill="#FFFFFF" stroke="#558B2F" stroke-width="1"/>
-  <text x="730" y="215" text-anchor="middle" font-size="11" font-weight="bold" fill="#33691E">MQTT Subscriber</text>
-  <text x="730" y="230" text-anchor="middle" font-size="10" fill="#33691E">+ Payload Validator</text>
+  <rect x="616" y="195" width="248" height="52" rx="6" fill="#FFFFFF" stroke="#558B2F" stroke-width="1"/>
+  <text x="740" y="215" text-anchor="middle" font-size="11" font-weight="bold" fill="#33691E">MQTT Subscriber</text>
+  <text x="740" y="230" text-anchor="middle" font-size="10" fill="#33691E">+ Zod Payload Validator</text>
 
-  <rect x="616" y="258" width="228" height="52" rx="6" fill="#FFFFFF" stroke="#558B2F" stroke-width="1"/>
-  <text x="730" y="278" text-anchor="middle" font-size="11" font-weight="bold" fill="#33691E">Watchdog</text>
-  <text x="730" y="293" text-anchor="middle" font-size="10" fill="#33691E">(OFFLINE Detection, last_seen_at)</text>
+  <rect x="616" y="258" width="248" height="52" rx="6" fill="#FFFFFF" stroke="#558B2F" stroke-width="1"/>
+  <text x="740" y="278" text-anchor="middle" font-size="11" font-weight="bold" fill="#33691E">Watchdog</text>
+  <text x="740" y="293" text-anchor="middle" font-size="10" fill="#33691E">(OFFLINE Detection, last_seen_at)</text>
 
-  <rect x="616" y="321" width="228" height="52" rx="6" fill="#FFFFFF" stroke="#558B2F" stroke-width="1"/>
-  <text x="730" y="341" text-anchor="middle" font-size="11" font-weight="bold" fill="#33691E">REST API</text>
-  <text x="730" y="356" text-anchor="middle" font-size="10" fill="#33691E">/api/v1 (+ /api/v1/admin)</text>
+  <rect x="616" y="321" width="248" height="52" rx="6" fill="#FFFDE7" stroke="#EF6C00" stroke-width="1.2"/>
+  <text x="740" y="341" text-anchor="middle" font-size="11" font-weight="bold" fill="#E65100">simulatorManager.ts — ใหม่</text>
+  <text x="740" y="356" text-anchor="middle" font-size="10" fill="#E65100">Docker container lifecycle control</text>
 
-  <rect x="616" y="384" width="228" height="52" rx="6" fill="#FFFFFF" stroke="#558B2F" stroke-width="1"/>
-  <text x="730" y="404" text-anchor="middle" font-size="11" font-weight="bold" fill="#33691E">WebSocket Server</text>
-  <text x="730" y="419" text-anchor="middle" font-size="10" fill="#33691E">/live (real-time push)</text>
+  <rect x="616" y="384" width="248" height="52" rx="6" fill="#FFFFFF" stroke="#558B2F" stroke-width="1"/>
+  <text x="740" y="404" text-anchor="middle" font-size="11" font-weight="bold" fill="#33691E">REST API</text>
+  <text x="740" y="419" text-anchor="middle" font-size="9.5" fill="#33691E">/api/v1 — machines/jobs/alarms/kpi/admin/import + erp, maintenance (ใหม่)</text>
+
+  <rect x="616" y="447" width="248" height="52" rx="6" fill="#FFFFFF" stroke="#558B2F" stroke-width="1"/>
+  <text x="740" y="467" text-anchor="middle" font-size="11" font-weight="bold" fill="#33691E">WebSocket Server</text>
+  <text x="740" y="482" text-anchor="middle" font-size="10" fill="#33691E">/live (real-time push)</text>
+
+  <!-- Arrow simulatorManager <-> Docker Engine -->
+  <path d="M616,347 C 560,375 560,415 542,450" fill="none" stroke="#EF6C00" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowOrange)"/>
+  <text x="547" y="400" font-size="9" fill="#E65100">create / start</text>
+  <text x="547" y="412" font-size="9" fill="#E65100">/ stop container</text>
+
+  <!-- Arrow Docker Engine -> Simulators (runs container) -->
+  <path d="M338,458 C 305,445 295,435 282,424" fill="none" stroke="#EF6C00" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowOrange)"/>
+  <text x="200" y="495" text-anchor="middle" font-size="9" fill="#E65100">runs / stops container ที่ Simulator ทำงานอยู่ข้างใน</text>
 
   <!-- Arrow backend -> database -->
-  <line x1="730" y1="500" x2="730" y2="556" stroke="#333333" stroke-width="1.5" marker-end="url(#arrowGray)"/>
-  <text x="740" y="525" font-size="10" fill="#333333">SQL read / write</text>
-  <text x="740" y="540" font-size="9.5" fill="#333333">(Prisma + migrations)</text>
+  <line x1="740" y1="520" x2="740" y2="641" stroke="#333333" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <text x="750" y="575" font-size="10" fill="#333333">SQL read / write</text>
+  <text x="750" y="590" font-size="9.5" fill="#333333">(Prisma + migrations)</text>
 
   <!-- Database -->
-  <rect x="600" y="560" width="260" height="210" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.5"/>
-  <text x="730" y="585" text-anchor="middle" font-size="14" font-weight="bold" fill="#1B5E20">PostgreSQL</text>
-  <line x1="616" y1="596" x2="844" y2="596" stroke="#2E7D32" stroke-width="1"/>
-  <text x="730" y="617" text-anchor="middle" font-size="11" fill="#1B5E20">machines</text>
-  <text x="730" y="637" text-anchor="middle" font-size="11" fill="#1B5E20">machine_telemetry</text>
-  <text x="730" y="657" text-anchor="middle" font-size="11" fill="#1B5E20">machine_status_events</text>
-  <text x="730" y="677" text-anchor="middle" font-size="11" fill="#1B5E20">production_jobs</text>
-  <text x="730" y="697" text-anchor="middle" font-size="11" fill="#1B5E20">alarms</text>
-  <text x="730" y="725" text-anchor="middle" font-size="9.5" fill="#1B5E20">migration แบบ versioned (up/down)</text>
-  <text x="730" y="740" text-anchor="middle" font-size="9.5" fill="#1B5E20">ผ่าน Prisma Migrate</text>
+  <rect x="600" y="645" width="280" height="275" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.5"/>
+  <text x="740" y="668" text-anchor="middle" font-size="14" font-weight="bold" fill="#1B5E20">PostgreSQL — Master Data ร่วม</text>
+  <line x1="616" y1="679" x2="864" y2="679" stroke="#2E7D32" stroke-width="1"/>
+  <text x="740" y="698" text-anchor="middle" font-size="10.5" fill="#1B5E20">machines · machine_status_events</text>
+  <text x="740" y="714" text-anchor="middle" font-size="10.5" fill="#1B5E20">machine_telemetry · production_jobs</text>
+  <text x="740" y="730" text-anchor="middle" font-size="10.5" fill="#1B5E20">alarms · audit_log</text>
+
+  <rect x="616" y="742" width="248" height="60" rx="6" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.2"/>
+  <text x="740" y="760" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#E65100">ERP Master Data (mock) — ใหม่</text>
+  <text x="740" y="776" text-anchor="middle" font-size="9.5" fill="#E65100">erp_machine_assets · product_skus</text>
+  <text x="740" y="791" text-anchor="middle" font-size="8.5" font-style="italic" fill="#EF6C00">พักไว้ถังเดียวกับ Monitoring (ดูหมายเหตุขวามือ)</text>
+
+  <text x="740" y="885" text-anchor="middle" font-size="9.5" fill="#1B5E20">migration แบบ versioned (up/down)</text>
+  <text x="740" y="900" text-anchor="middle" font-size="9.5" fill="#1B5E20">ผ่าน Prisma Migrate</text>
+
+  <!-- External ERP system (conceptual, production only) -->
+  <rect x="950" y="700" width="230" height="150" rx="8" fill="#ECEFF1" stroke="#455A64" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="1065" y="726" text-anchor="middle" font-size="13" font-weight="bold" fill="#263238">ERP System (ของจริง)</text>
+  <text x="1065" y="746" text-anchor="middle" font-size="10" fill="#37474F">เช่น SAP / Oracle / Odoo</text>
+  <line x1="966" y1="756" x2="1214" y2="756" stroke="#455A64" stroke-width="1"/>
+  <text x="1065" y="774" text-anchor="middle" font-size="10" fill="#37474F">เก็บ Master Data เครื่องจักร</text>
+  <text x="1065" y="790" text-anchor="middle" font-size="10" fill="#37474F">และราคา SKU จริงขององค์กร</text>
+  <text x="1065" y="815" text-anchor="middle" font-size="10" font-weight="bold" fill="#B71C1C">ยังไม่ implement ใน Prototype นี้</text>
+  <text x="1065" y="832" text-anchor="middle" font-size="9" font-style="italic" fill="#607D8B">(กล่องนี้คือของสมมติ ไม่มีโค้ดรองรับจริง)</text>
+
+  <!-- Arrow ERP System -> Postgres ERP mock section -->
+  <path d="M950,780 C 910,780 895,780 866,775" fill="none" stroke="#455A64" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowSlate)"/>
+  <text x="905" y="750" text-anchor="middle" font-size="8.5" fill="#37474F">sync / pull</text>
+  <text x="905" y="761" text-anchor="middle" font-size="8.5" fill="#37474F">master data</text>
+  <text x="905" y="808" text-anchor="middle" font-size="8" font-style="italic" fill="#78909C">(เฉพาะระบบจริง)</text>
+
+  <!-- Note: prototype vs production for ERP data -->
+  <rect x="950" y="868" width="360" height="70" rx="6" fill="#FFFDE7" stroke="#F9A825" stroke-width="1"/>
+  <text x="962" y="886" font-size="9.5" fill="#5D4037"><tspan font-weight="bold">Prototype:</tspan> ERP data (mock) เก็บรวมอยู่ใน Postgres</text>
+  <text x="962" y="901" font-size="9.5" fill="#5D4037">ถังเดียวกับ Monitoring — เข้าถึงผ่าน erp.ts เท่านั้น</text>
+  <text x="962" y="919" font-size="9.5" fill="#5D4037"><tspan font-weight="bold">ระบบจริง:</tspan> จุดนี้จะเป็น adapter ที่ sync/pull</text>
+  <text x="962" y="934" font-size="9.5" fill="#5D4037">master data จาก ERP จริงเข้ามาแทนการพิมพ์เอง</text>
 
   <!-- Arrow backend -> dashboard -->
-  <line x1="860" y1="230" x2="1116" y2="230" stroke="#333333" stroke-width="1.5" marker-end="url(#arrowGray)"/>
-  <text x="900" y="215" font-size="10" fill="#333333">REST API + WebSocket</text>
-  <text x="900" y="248" font-size="9.5" fill="#333333">(real-time push ไปหน้าจอ)</text>
+  <line x1="880" y1="300" x2="1246" y2="300" stroke="#333333" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <text x="1000" y="285" text-anchor="middle" font-size="10" fill="#333333">REST API + WebSocket</text>
+  <text x="1000" y="318" text-anchor="middle" font-size="9.5" fill="#333333">(real-time push ไปหน้าจอ)</text>
 
   <!-- Dashboard -->
-  <rect x="1120" y="150" width="260" height="360" rx="8" fill="#F3E5F5" stroke="#6A1B9A" stroke-width="1.5"/>
-  <text x="1250" y="173" text-anchor="middle" font-size="14" font-weight="bold" fill="#4A148C">Dashboard (React)</text>
-  <text x="1250" y="190" text-anchor="middle" font-size="11" fill="#4A148C">Browser Client</text>
+  <rect x="1250" y="150" width="280" height="590" rx="8" fill="#F3E5F5" stroke="#6A1B9A" stroke-width="1.5"/>
+  <text x="1390" y="173" text-anchor="middle" font-size="14" font-weight="bold" fill="#4A148C">Dashboard (React)</text>
+  <text x="1390" y="190" text-anchor="middle" font-size="11" fill="#4A148C">Browser Client</text>
 
-  <rect x="1136" y="205" width="228" height="120" rx="6" fill="#FFFFFF" stroke="#6A1B9A" stroke-width="1"/>
-  <text x="1250" y="228" text-anchor="middle" font-size="11" font-weight="bold" fill="#4A148C">Operator View</text>
-  <text x="1250" y="248" text-anchor="middle" font-size="10" fill="#4A148C">สถานะเครื่องล่าสุด / Active Alarm</text>
-  <text x="1250" y="266" text-anchor="middle" font-size="10" fill="#4A148C">Historical Data (เลือกเครื่อง+ช่วงเวลา)</text>
-  <text x="1250" y="284" text-anchor="middle" font-size="10" fill="#4A148C">ค้นหาด้วย Job Number</text>
-  <text x="1250" y="302" text-anchor="middle" font-size="10" fill="#4A148C">ประวัติ Alarm</text>
+  <rect x="1266" y="205" width="248" height="120" rx="6" fill="#FFFFFF" stroke="#6A1B9A" stroke-width="1"/>
+  <text x="1390" y="225" text-anchor="middle" font-size="11" font-weight="bold" fill="#4A148C">Operator + History View</text>
+  <text x="1390" y="243" text-anchor="middle" font-size="10" fill="#4A148C">สถานะเครื่องล่าสุด / Active Alarm</text>
+  <text x="1390" y="260" text-anchor="middle" font-size="10" fill="#4A148C">Historical Data (เลือกเครื่อง+ช่วงเวลา)</text>
+  <text x="1390" y="277" text-anchor="middle" font-size="10" fill="#4A148C">ค้นหาด้วย Job Number</text>
+  <text x="1390" y="294" text-anchor="middle" font-size="10" fill="#4A148C">ประวัติ Alarm</text>
 
-  <rect x="1136" y="332" width="228" height="60" rx="6" fill="#FFFFFF" stroke="#6A1B9A" stroke-width="1"/>
-  <text x="1250" y="352" text-anchor="middle" font-size="11" font-weight="bold" fill="#4A148C">Executive KPI View</text>
-  <text x="1250" y="369" text-anchor="middle" font-size="9.5" fill="#4A148C">OEE, Availability/Performance/Quality,</text>
-  <text x="1250" y="384" text-anchor="middle" font-size="9.5" fill="#4A148C">Reject Rate, Est. Energy &amp; Labor Cost</text>
+  <rect x="1266" y="335" width="248" height="64" rx="6" fill="#FFFFFF" stroke="#6A1B9A" stroke-width="1"/>
+  <text x="1390" y="355" text-anchor="middle" font-size="11" font-weight="bold" fill="#4A148C">Executive KPI View</text>
+  <text x="1390" y="372" text-anchor="middle" font-size="9.5" fill="#4A148C">OEE, Availability/Performance/Quality,</text>
+  <text x="1390" y="387" text-anchor="middle" font-size="9.5" fill="#4A148C">Reject Rate, Est. Energy &amp; Labor Cost</text>
 
-  <rect x="1136" y="400" width="228" height="72" rx="6" fill="#FFFFFF" stroke="#6A1B9A" stroke-width="1"/>
-  <text x="1250" y="420" text-anchor="middle" font-size="11" font-weight="bold" fill="#4A148C">Admin View</text>
-  <text x="1250" y="438" text-anchor="middle" font-size="10" fill="#4A148C">ลงทะเบียน/แก้ไขเครื่องจักร</text>
-  <text x="1250" y="455" text-anchor="middle" font-size="10" fill="#4A148C">ไม่ต้อง restart service</text>
+  <rect x="1266" y="409" width="248" height="84" rx="6" fill="#FFFDE7" stroke="#EF6C00" stroke-width="1.2"/>
+  <text x="1390" y="429" text-anchor="middle" font-size="11" font-weight="bold" fill="#E65100">ERP View — ใหม่</text>
+  <text x="1390" y="446" text-anchor="middle" font-size="9.5" fill="#E65100">Job Order pricing, Margin by SKU/Machine</text>
+  <text x="1390" y="461" text-anchor="middle" font-size="9.5" fill="#E65100">แก้ไข Machine Assets / SKU Pricing</text>
+  <text x="1390" y="476" text-anchor="middle" font-size="9" font-style="italic" fill="#EF6C00">(mock ERP master data)</text>
+
+  <rect x="1266" y="503" width="248" height="84" rx="6" fill="#FFFDE7" stroke="#EF6C00" stroke-width="1.2"/>
+  <text x="1390" y="523" text-anchor="middle" font-size="11" font-weight="bold" fill="#E65100">Chief Operator View — ใหม่</text>
+  <text x="1390" y="540" text-anchor="middle" font-size="9.5" fill="#E65100">Preventive Maintenance planning</text>
+  <text x="1390" y="555" text-anchor="middle" font-size="9.5" fill="#E65100">(run-hours since PM เทียบ interval)</text>
+  <text x="1390" y="570" text-anchor="middle" font-size="9.5" fill="#E65100">Downtime breakdown ตามสาเหตุ/รุ่นเครื่อง</text>
+
+  <rect x="1266" y="597" width="248" height="110" rx="6" fill="#FFFFFF" stroke="#6A1B9A" stroke-width="1"/>
+  <text x="1390" y="617" text-anchor="middle" font-size="11" font-weight="bold" fill="#4A148C">Admin View</text>
+  <text x="1390" y="634" text-anchor="middle" font-size="9.5" fill="#4A148C">ลงทะเบียน/เปิด-ปิดเครื่องจักร (เลือกจาก ERP asset)</text>
+  <text x="1390" y="649" text-anchor="middle" font-size="9.5" fill="#4A148C">System Health (DB stats, ingestion rate)</text>
+  <text x="1390" y="664" text-anchor="middle" font-size="9.5" fill="#4A148C">Import CSV (manual fallback)</text>
+  <text x="1390" y="679" text-anchor="middle" font-size="9.5" fill="#4A148C">Audit Log</text>
 
   <!-- Dashed admin arrow back to backend -->
-  <path d="M1136,436 C 1010,500 900,430 862,353" fill="none" stroke="#6A1B9A" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowPurple)"/>
-  <text x="905" y="450" font-size="9.5" fill="#6A1B9A">POST /api/v1/admin/machines</text>
-  <text x="905" y="464" font-size="9.5" fill="#6A1B9A">(เพิ่มเครื่องจักรใหม่แบบ live)</text>
+  <path d="M1266,650 C 1120,662 980,540 884,432" fill="none" stroke="#6A1B9A" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowPurple)"/>
+  <text x="965" y="600" font-size="9.5" fill="#6A1B9A">POST/PATCH /admin/machines/:id</text>
+  <text x="965" y="614" font-size="9.5" fill="#6A1B9A">(register/deactivate + คุม container)</text>
+
+  <!-- Dashed ERP/Chief Operator mutation arrow back to backend -->
+  <path d="M1266,500 C 1100,485 980,450 884,415" fill="none" stroke="#6A1B9A" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowPurple)"/>
+  <text x="960" y="470" font-size="9.5" fill="#6A1B9A">PUT/DELETE /erp/... ,</text>
+  <text x="960" y="484" font-size="9.5" fill="#6A1B9A">POST /admin/machines/:id/maintenance</text>
 
   <!-- Legend -->
-  <line x1="60" y1="795" x2="110" y2="795" stroke="#333333" stroke-width="1.5" marker-end="url(#arrowGray)"/>
-  <text x="118" y="799" font-size="11" fill="#333333">Data Flow (MQTT / REST / WebSocket)</text>
+  <line x1="60" y1="965" x2="110" y2="965" stroke="#333333" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <text x="118" y="969" font-size="11" fill="#333333">Data Flow (MQTT / REST / WebSocket)</text>
 
-  <line x1="440" y1="795" x2="490" y2="795" stroke="#6A1B9A" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowPurple)"/>
-  <text x="498" y="799" font-size="11" fill="#333333">Admin / Control Action</text>
+  <line x1="420" y1="965" x2="470" y2="965" stroke="#6A1B9A" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowPurple)"/>
+  <text x="478" y="969" font-size="11" fill="#333333">Admin / Control Action (REST)</text>
+
+  <line x1="740" y1="965" x2="790" y2="965" stroke="#EF6C00" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowOrange)"/>
+  <text x="798" y="969" font-size="11" fill="#333333">Docker Container Lifecycle Control</text>
+
+  <line x1="1120" y1="965" x2="1170" y2="965" stroke="#455A64" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowSlate)"/>
+  <text x="1178" y="969" font-size="11" fill="#333333">ERP Sync — แนวคิดสำหรับระบบจริง (ยังไม่ implement)</text>
 </svg>

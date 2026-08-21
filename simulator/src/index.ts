@@ -21,6 +21,7 @@ type MachineState = {
   jobShotsRemaining: number;
   silentTicksRemaining: number;
   alarmTicksRemaining: number;
+  activeAlarmCode: string | null;
 };
 
 const state: MachineState = {
@@ -36,7 +37,24 @@ const state: MachineState = {
   jobShotsRemaining: 0,
   silentTicksRemaining: 0,
   alarmTicksRemaining: 0,
+  activeAlarmCode: null,
 };
+
+// Realistic Injection Molding fault set, not just barrel over-temperature.
+// `apply` nudges telemetry toward whatever symptom that fault would actually
+// produce, so History/KPI views showing a temperature or pressure spike line
+// up with the alarm that was raised at the same moment.
+type AlarmDef = { code: string; message: string; apply: () => void };
+const ALARM_DEFS: AlarmDef[] = [
+  { code: "E001", message: "Barrel over-temperature", apply: () => { state.temperatureC += 15; } },
+  { code: "E002", message: "Injection pressure out of range", apply: () => { state.pressureBar += 180; } },
+  { code: "E003", message: "Mold not fully closed", apply: () => {} },
+  { code: "E004", message: "Low hydraulic oil pressure", apply: () => { state.pressureBar = clamp(state.pressureBar - 200, 700, 950); } },
+  { code: "E005", message: "Screw motor overload", apply: () => { state.cycleTimeSec += 6; } },
+  { code: "E006", message: "Cooling water flow fault", apply: () => { state.temperatureC += 8; } },
+  { code: "E007", message: "Material hopper low", apply: () => {} },
+  { code: "E008", message: "Ejector fault", apply: () => {} },
+];
 
 let jobCounter = 0;
 
@@ -56,15 +74,31 @@ function publishJSON(client: MqttClient, topic: string, payload: unknown) {
 // README.md, "Design Rationale" section) so `docker compose up` produces a working demo
 // without a manual Admin UI step first. The MQTT ingestion path still
 // rejects telemetry from any machineId that isn't registered.
+//
+// Admin no longer accepts machine specs as free text (it picks an existing
+// ERP asset — see backend/src/api/admin.ts), so a simulator bootstrapping
+// itself for the first time has to seed its own ERP asset record too. A real
+// deployment would already have that asset in ERP before commissioning; this
+// stands in for that step so `docker compose up` stays a one-command demo.
 async function registerMachine() {
   for (let attempt = 1; attempt <= 15; attempt++) {
     try {
+      const assetRes = await fetch(`${BACKEND_API_URL}/erp/machine-assets/${encodeURIComponent(MACHINE_ID)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ machineName: MACHINE_NAME }),
+      });
+      if (!assetRes.ok) {
+        console.warn(`[${MACHINE_ID}] ERP asset upsert attempt ${attempt} failed: ${assetRes.status}`);
+        await new Promise((r) => setTimeout(r, 2000));
+        continue;
+      }
+
       const res = await fetch(`${BACKEND_API_URL}/admin/machines`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          machineId: MACHINE_ID,
-          machineName: MACHINE_NAME,
+          assetId: MACHINE_ID,
           createdBy: "simulator-bootstrap",
         }),
       });
@@ -122,21 +156,28 @@ function tick(client: MqttClient) {
         schemaVersion: "1.0",
         machineId: MACHINE_ID,
         timestamp: now,
-        alarmData: { event: "CLEAR", alarmCode: "E001", jobNumber: state.jobNumber ?? undefined },
+        alarmData: {
+          event: "CLEAR",
+          alarmCode: state.activeAlarmCode ?? "E001",
+          jobNumber: state.jobNumber ?? undefined,
+        },
       });
+      state.activeAlarmCode = null;
     }
   } else if (state.status === "RUN" && Math.random() < 0.015) {
+    const def = ALARM_DEFS[Math.floor(Math.random() * ALARM_DEFS.length)];
     state.status = "ALARM";
     state.alarmTicksRemaining = 3 + Math.floor(Math.random() * 4);
-    state.temperatureC += 15;
+    state.activeAlarmCode = def.code;
+    def.apply();
     publishJSON(client, `factory/${MACHINE_ID}/alarm`, {
       schemaVersion: "1.0",
       machineId: MACHINE_ID,
       timestamp: now,
       alarmData: {
         event: "RAISE",
-        alarmCode: "E001",
-        alarmMessage: "Barrel over-temperature",
+        alarmCode: def.code,
+        alarmMessage: def.message,
         jobNumber: state.jobNumber ?? undefined,
       },
     });

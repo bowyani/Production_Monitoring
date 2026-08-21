@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../db/client";
-import type { Machine } from "@prisma/client";
+import type { Machine, ErpMachineAsset } from "@prisma/client";
 
 export const kpiRouter = Router();
 
@@ -17,7 +17,10 @@ kpiRouter.get("/kpi/summary", async (req, res) => {
   // from), so Availability would come out as a misleading 0% rather than
   // "unknown". Excluding them entirely — surfaced explicitly in the
   // dashboard's blind-spot banner — is more honest than a fake number.
-  const machines = await prisma.machine.findMany({ where: { isActive: true, dataSource: "MQTT" } });
+  const machines = await prisma.machine.findMany({
+    where: { isActive: true, dataSource: "MQTT" },
+    include: { asset: true },
+  });
   const results = await Promise.all(machines.map((m) => computeMachineKpi(m, from, to)));
 
   const windowHours = (to.getTime() - from.getTime()) / 3_600_000;
@@ -45,7 +48,7 @@ kpiRouter.get("/kpi/summary", async (req, res) => {
   res.json({ from, to, machines: results, fleet });
 });
 
-async function computeMachineKpi(machine: Machine, from: Date, to: Date) {
+async function computeMachineKpi(machine: Machine & { asset: ErpMachineAsset }, from: Date, to: Date) {
   const windowMs = to.getTime() - from.getTime();
 
   const priorEvent = await prisma.machineStatusEvent.findFirst({
@@ -74,7 +77,7 @@ async function computeMachineKpi(machine: Machine, from: Date, to: Date) {
     _avg: { cycleTimeSec: true },
   });
   const avgCycleTimeSec = telemetryAgg._avg.cycleTimeSec ? Number(telemetryAgg._avg.cycleTimeSec) : null;
-  const targetCycleTimeSec = machine.targetCycleTimeSec ? Number(machine.targetCycleTimeSec) : null;
+  const targetCycleTimeSec = machine.asset.targetCycleTimeSec ? Number(machine.asset.targetCycleTimeSec) : null;
   const performance =
     targetCycleTimeSec && avgCycleTimeSec ? Math.min(1, targetCycleTimeSec / avgCycleTimeSec) : null;
 
@@ -95,14 +98,14 @@ async function computeMachineKpi(machine: Machine, from: Date, to: Date) {
       : null;
 
   const runtimeHours = runMs / 3_600_000;
-  const ratedPowerKw = machine.ratedPowerKw ? Number(machine.ratedPowerKw) : null;
+  const ratedPowerKw = machine.asset.ratedPowerKw ? Number(machine.asset.ratedPowerKw) : null;
   const estimatedEnergyKwh = ratedPowerKw != null ? ratedPowerKw * runtimeHours : null;
-  const laborCostPerHour = machine.laborCostPerHour ? Number(machine.laborCostPerHour) : null;
+  const laborCostPerHour = machine.asset.laborCostPerHour ? Number(machine.asset.laborCostPerHour) : null;
   const estimatedLaborCost = laborCostPerHour != null ? laborCostPerHour * runtimeHours : null;
 
   return {
     machineId: machine.machineId,
-    machineName: machine.machineName,
+    machineName: machine.asset.machineName,
     availability,
     performance,
     quality,
