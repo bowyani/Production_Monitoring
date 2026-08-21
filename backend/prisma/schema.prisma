@@ -17,6 +17,11 @@ model Machine {
   machineId         String    @id @map("machine_id")
   status            String    @default("OFFLINE")
   lastSeenAt        DateTime? @map("last_seen_at")
+  // Wall-clock time of the last successful CSV import for this machine (see
+  // import.ts). MANUAL machines have no telemetry to set lastSeenAt, so the
+  // dashboard shows this instead — it's the closest thing MANUAL machines
+  // have to a "last seen".
+  lastImportedAt    DateTime? @map("last_imported_at")
   isActive          Boolean   @default(true) @map("is_active")
   // "MQTT" = connected machine/simulator publishing telemetry directly.
   // "MANUAL" = legacy machine with no data connection — history comes only

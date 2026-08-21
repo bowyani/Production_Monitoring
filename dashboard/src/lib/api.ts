@@ -6,6 +6,7 @@ export type Machine = {
   machineModel: string | null;
   status: string;
   lastSeenAt: string | null;
+  lastImportedAt: string | null;
   isActive: boolean;
   dataSource: "MQTT" | "MANUAL";
   ratedPowerKw: number | null;
@@ -240,6 +241,36 @@ export type SystemStats = {
   };
 };
 
+// Mirrors simulator/src/index.ts's Tuning type. Every simulator publishes its
+// current values retained over MQTT on connect/change (see
+// backend/src/mqtt/subscriber.ts), so `tuning` is null only for a machine
+// whose simulator hasn't come up yet.
+export type SimulatorTuning = {
+  tickMs: number;
+  silentProbability: number;
+  alarmProbability: number;
+  rejectProbability: number;
+  cycleTimeMinSec: number;
+  cycleTimeMaxSec: number;
+  pressureMinBar: number;
+  pressureMaxBar: number;
+  temperatureMinC: number;
+  temperatureMaxC: number;
+};
+
+export const SIMULATOR_DEFAULT_TUNING: SimulatorTuning = {
+  tickMs: 2000,
+  silentProbability: 0.2,
+  alarmProbability: 0.015,
+  rejectProbability: 0.03,
+  cycleTimeMinSec: 9,
+  cycleTimeMaxSec: 16,
+  pressureMinBar: 700,
+  pressureMaxBar: 950,
+  temperatureMinC: 195,
+  temperatureMaxC: 245,
+};
+
 export type ImportResult = {
   created: number;
   updated: number;
@@ -342,4 +373,13 @@ export const api = {
   getErpSummary: (from?: string, to?: string) => request<ErpSummary>(`/erp/summary${qs({ from, to })}`),
   getMaintenanceOverview: (from?: string, to?: string) =>
     request<MaintenanceOverview>(`/maintenance/overview${qs({ from, to })}`),
+  getSimulatorParams: (machineId: string) =>
+    request<{ machineId: string; tuning: SimulatorTuning | null }>(
+      `/admin/machines/${encodeURIComponent(machineId)}/simulator/params`
+    ),
+  patchSimulatorParams: (machineId: string, patch: Partial<SimulatorTuning>) =>
+    request<{ ok: boolean; applied: Partial<SimulatorTuning> }>(
+      `/admin/machines/${encodeURIComponent(machineId)}/simulator/params`,
+      { method: "PATCH", body: JSON.stringify(patch) }
+    ),
 };

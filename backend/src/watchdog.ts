@@ -1,6 +1,7 @@
 import { prisma } from "./db/client";
 import { broadcast } from "./ws/live";
 import { config } from "./config";
+import { logAudit } from "./audit";
 
 // Catches machines that stopped publishing entirely (as opposed to a clean
 // disconnect an MQTT Last Will could catch) — see README.md ("Design Rationale" section).
@@ -31,6 +32,12 @@ export function startWatchdog() {
         data: { status: "OFFLINE" },
       });
       broadcast("status", { machineId: machine.machineId, status: "OFFLINE" });
+      // actor "watchdog" (not "admin-ui"/"erp-ui") marks this as a
+      // system-triggered action, not a human click — see AuditLogView styling.
+      await logAudit("watchdog", "MACHINE_OFFLINE_DETECTED", "machine", machine.machineId, {
+        previousStatus: machine.status,
+        lastSeenAt: machine.lastSeenAt,
+      });
       console.warn(`[watchdog] marked ${machine.machineId} OFFLINE`);
     }
   }, 5000);

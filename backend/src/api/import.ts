@@ -181,6 +181,13 @@ importRouter.post("/admin/import/jobs", async (req, res) => {
     else created++;
   }
 
+  // Dashboard's MANUAL-machine table shows this as "Last imported" in place
+  // of "Last seen" (which never populates for MANUAL machines — no telemetry).
+  await prisma.machine.update({
+    where: { machineId },
+    data: { lastImportedAt: new Date() },
+  });
+
   await logAudit("admin-ui", "JOBS_IMPORTED", "machine", machineId, {
     created,
     updated,

@@ -17,7 +17,8 @@ export type LiveEvent =
     }
   | { event: "job"; data: { machineId: string; jobNumber: string; event: string } }
   | { event: "alarm"; data: { machineId: string; alarmCode: string; event: string } }
-  | { event: "status"; data: { machineId: string; status: string } };
+  | { event: "status"; data: { machineId: string; status: string } }
+  | { event: "simulatorParams"; data: { machineId: string; tuning: Record<string, number> } };
 
 export function useLiveSocket(onEvent: (msg: LiveEvent) => void) {
   const handlerRef = useRef(onEvent);

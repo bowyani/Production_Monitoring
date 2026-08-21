@@ -1,4 +1,4 @@
-import mqtt from "mqtt";
+import mqtt, { type MqttClient } from "mqtt";
 import { prisma } from "../db/client";
 import { broadcast } from "../ws/live";
 import { config } from "../config";
@@ -7,12 +7,39 @@ import { telemetrySchema, jobSchema, alarmSchema } from "./schemas";
 const TOPIC_TELEMETRY = /^factory\/([^/]+)\/telemetry$/;
 const TOPIC_JOB = /^factory\/([^/]+)\/job$/;
 const TOPIC_ALARM = /^factory\/([^/]+)\/alarm$/;
+const TOPIC_CONTROL_STATE = /^factory\/([^/]+)\/control\/state$/;
+
+// The simulator publishes its current tuning params retained on
+// factory/<machineId>/control/state (see simulator/src/index.ts). Caching
+// the latest one per machine here is what lets the Simulator Tuning page's
+// GET return real values instead of only ever seeing writes.
+export type SimulatorParamsState = { machineId: string; tuning: Record<string, number> };
+const simulatorParamsCache = new Map<string, SimulatorParamsState>();
+
+let mqttClient: MqttClient | undefined;
+
+export function getMqttClient() {
+  return mqttClient;
+}
+
+export function getSimulatorParams(machineId: string) {
+  return simulatorParamsCache.get(machineId);
+}
+
+// Fire-and-forget: publishes retained so a simulator that reconnects (or
+// hasn't started yet) still picks up the desired tuning without a resend.
+export function publishSimulatorControl(machineId: string, patch: Record<string, unknown>) {
+  if (!mqttClient) return false;
+  mqttClient.publish(`factory/${machineId}/control`, JSON.stringify(patch), { retain: true });
+  return true;
+}
 
 export function startMqttSubscriber() {
   const client = mqtt.connect(config.mqttBrokerUrl);
+  mqttClient = client;
 
   client.on("connect", () => {
-    client.subscribe(["factory/+/telemetry", "factory/+/job", "factory/+/alarm"]);
+    client.subscribe(["factory/+/telemetry", "factory/+/job", "factory/+/alarm", "factory/+/control/state"]);
     console.log(`[mqtt] connected to ${config.mqttBrokerUrl}`);
   });
 
@@ -30,6 +57,10 @@ export function startMqttSubscriber() {
         await handleJob(jobSchema.parse(raw));
       } else if (TOPIC_ALARM.test(topic)) {
         await handleAlarm(alarmSchema.parse(raw));
+      } else if (TOPIC_CONTROL_STATE.test(topic)) {
+        const machineId = TOPIC_CONTROL_STATE.exec(topic)![1];
+        simulatorParamsCache.set(machineId, raw);
+        broadcast("simulatorParams", raw);
       }
     } catch (err) {
       console.error(`[mqtt] rejected message on ${topic}`, err);

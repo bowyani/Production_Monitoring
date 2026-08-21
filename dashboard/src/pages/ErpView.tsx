@@ -84,6 +84,10 @@ export default function ErpView() {
 
   const [assetForm, setAssetForm] = useState<AssetForm>(emptyAssetForm);
   const [savingAsset, setSavingAsset] = useState(false);
+  // Tracks whether the form was opened via "Edit" on an existing row — the
+  // PUT endpoint upserts by assetId, so without this the Add form would
+  // silently overwrite an existing asset if the user typed a duplicate ID.
+  const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
 
   async function load() {
     setError(null);
@@ -117,15 +121,29 @@ export default function ErpView() {
 
   function editAsset(a: ErpMachineAsset) {
     setAssetForm(toAssetForm(a));
+    setEditingAssetId(a.assetId);
   }
 
   function resetAssetForm() {
     setAssetForm(emptyAssetForm);
+    setEditingAssetId(null);
   }
 
   async function saveAsset(e: React.FormEvent) {
     e.preventDefault();
-    if (!assetForm.assetId.trim() || !assetForm.machineName.trim()) return;
+    const assetId = assetForm.assetId.trim();
+    if (!assetId || !assetForm.machineName.trim()) return;
+
+    // Adding new (not editing) with an ID that already exists would silently
+    // overwrite that asset via the upsert endpoint — block it with an alert
+    // (same attention level as the confirm() below) and point the user at
+    // Edit instead.
+    if (editingAssetId === null && assets.some((a) => a.assetId === assetId)) {
+      alert(`Machine ID "${assetId}" already exists — use a different ID, or click Edit on the existing row to change it.`);
+      return;
+    }
+
+    setError(null);
     setSavingAsset(true);
     try {
       await api.setMachineAsset(assetForm.assetId.trim(), {
@@ -411,7 +429,7 @@ export default function ErpView() {
             style={{ padding: 6, width: 130 }}
           />
           <button type="submit" disabled={savingAsset}>
-            {assets.some((a) => a.assetId === assetForm.assetId) ? "Update" : "Add"} asset
+            {editingAssetId !== null ? "Update" : "Add"} asset
           </button>
           {assetForm.assetId && (
             <button type="button" onClick={resetAssetForm}>

@@ -3,12 +3,15 @@ import { api, type Machine, type Alarm, type ProductionJob } from "../lib/api";
 import { useLiveSocket } from "../lib/useLiveSocket";
 import { usePagination } from "../lib/usePagination";
 import Pagination from "../components/Pagination";
+import { displayStatus } from "../lib/format";
+import HistoricalDataSection from "../components/HistoricalDataSection";
 
 const STATUS_COLOR: Record<string, string> = {
   RUN: "#1a7f37",
   STOP: "#9a6700",
   ALARM: "#cf222e",
   OFFLINE: "#57606a",
+  MANUAL: "#57606a",
   INACTIVE: "#8c959f",
 };
 
@@ -24,58 +27,27 @@ const STATUS_PRIORITY: Record<string, number> = {
 
 const UNASSIGNED_ZONE = "Unassigned";
 
-const JOB_STATUSES = ["RUNNING", "DONE"];
-const SORT_FIELDS: { value: string; label: string }[] = [
-  { value: "startTime", label: "Started" },
-  { value: "jobNumber", label: "Job Number" },
-  { value: "goodQty", label: "Good Qty" },
-  { value: "rejectQty", label: "Reject Qty" },
-  { value: "status", label: "Status" },
-];
-
 type LiveMachine = Machine & { cycleTimeSec?: number; shotCount?: number };
 
 export default function OperatorView() {
   const [machines, setMachines] = useState<LiveMachine[]>([]);
   const [alarms, setAlarms] = useState<Alarm[]>([]);
 
-  const [jobQuery, setJobQuery] = useState("");
-  const [filterMachineId, setFilterMachineId] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
-  const [filterProduct, setFilterProduct] = useState("");
-  const [sortField, setSortField] = useState("startTime");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  // Only the running jobs, just enough to show current Job/Product/Good/
+  // Reject per machine in the grid below (Direction.md §4.3). Full search
+  // with filters/sort lives on the Production page now.
+  const [runningJobs, setRunningJobs] = useState<ProductionJob[]>([]);
 
-  const [jobResults, setJobResults] = useState<ProductionJob[]>([]);
-  const [job, setJob] = useState<ProductionJob | null>(null);
-  const [jobError, setJobError] = useState<string | null>(null);
-
-  function refreshJobs() {
-    api
-      .searchJobs({
-        machineId: filterMachineId || undefined,
-        q: jobQuery.trim() || undefined,
-        productCode: filterProduct.trim() || undefined,
-        status: filterStatus || undefined,
-        sort: sortField,
-        dir: sortDir,
-      })
-      .then(setJobResults)
-      .catch((err) => setJobError(err instanceof Error ? err.message : "search failed"));
+  function refreshRunningJobs() {
+    api.searchJobs({ status: "RUNNING" }).then(setRunningJobs).catch(console.error);
   }
 
   useEffect(() => {
-    refreshJobs();
+    refreshRunningJobs();
     api.getMachines().then(setMachines).catch(console.error);
     api.getActiveAlarms().then(setAlarms).catch(console.error);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Re-run search whenever a filter/sort control changes.
-  useEffect(() => {
-    refreshJobs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterMachineId, filterStatus, filterProduct, sortField, sortDir]);
 
   const machineById = useMemo(() => {
     const map = new Map<string, LiveMachine>();
@@ -110,11 +82,11 @@ export default function OperatorView() {
   // per Direction.md §4.3, so the current job per machine is looked up here.
   const currentJobByMachine = useMemo(() => {
     const map = new Map<string, ProductionJob>();
-    for (const j of jobResults) {
-      if (j.status === "RUNNING" && !map.has(j.machineId)) map.set(j.machineId, j);
+    for (const j of runningJobs) {
+      if (!map.has(j.machineId)) map.set(j.machineId, j);
     }
     return map;
-  }, [jobResults]);
+  }, [runningJobs]);
 
   useLiveSocket((msg) => {
     if (msg.event === "telemetry") {
@@ -145,47 +117,24 @@ export default function OperatorView() {
       api.getActiveAlarms().then(setAlarms).catch(console.error);
     }
     if (msg.event === "job") {
-      refreshJobs();
+      refreshRunningJobs();
     }
   });
 
-  function searchJob(e: React.FormEvent) {
-    e.preventDefault();
-    setJobError(null);
-    setJob(null);
-    refreshJobs();
-  }
+  const mqttMachines = useMemo(() => visibleMachines.filter((m) => m.dataSource === "MQTT"), [visibleMachines]);
+  const manualMachines = useMemo(() => visibleMachines.filter((m) => m.dataSource === "MANUAL"), [visibleMachines]);
 
-  function toggleSort(field: string) {
-    if (sortField === field) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortField(field);
-      setSortDir("desc");
-    }
-  }
-
-  function sortArrow(field: string) {
-    if (sortField !== field) return "";
-    return sortDir === "asc" ? " ▲" : " ▼";
-  }
-
-  async function openJob(jobNumber: string) {
-    setJobError(null);
-    try {
-      setJob(await api.getJob(jobNumber));
-    } catch (err) {
-      setJobError(err instanceof Error ? err.message : "not found");
-    }
-  }
-
-  const machinesPage = usePagination(visibleMachines, 10);
+  const mqttPage = usePagination(mqttMachines, 10);
+  const manualPage = usePagination(manualMachines, 10);
   const alarmsPage = usePagination(alarms, 10);
-  const jobsPage = usePagination(jobResults, 10);
 
   return (
     <div className="app-shell">
-      <h1>Operator Dashboard</h1>
+      <h1>Operation</h1>
+
+      <div className="zone zone-live">
+        <div className="zone-eyebrow zone-eyebrow-live">🔴 LIVE</div>
+        <h2>Operator Dashboard</h2>
 
       <section>
         <h2>Machines</h2>
@@ -205,6 +154,7 @@ export default function OperatorView() {
           ))}
         </div>
 
+        <h3>MQTT — New Machines</h3>
         <div className="table-card">
           <div className="table-scroll">
             <table>
@@ -223,7 +173,7 @@ export default function OperatorView() {
                 </tr>
               </thead>
               <tbody>
-                {machinesPage.pageItems.map((m) => {
+                {mqttPage.pageItems.map((m) => {
                   const currentJob = currentJobByMachine.get(m.machineId);
                   const color = STATUS_COLOR[m.status] ?? "#57606a";
                   const isAlarm = m.status === "ALARM";
@@ -231,7 +181,7 @@ export default function OperatorView() {
                     <tr key={m.machineId} className={isAlarm ? "row-flag" : undefined}>
                       <td>
                         <span className="badge" style={{ background: color }}>
-                          {m.status}
+                          {displayStatus(m)}
                         </span>
                       </td>
                       <td>
@@ -253,20 +203,85 @@ export default function OperatorView() {
                     </tr>
                   );
                 })}
-                {visibleMachines.length === 0 && (
+                {mqttMachines.length === 0 && (
                   <tr className="row-empty">
-                    <td colSpan={10}>No machines in this zone.</td>
+                    <td colSpan={10}>No MQTT machines in this zone.</td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
           <Pagination
-            page={machinesPage.page}
-            pageCount={machinesPage.pageCount}
-            total={machinesPage.total}
-            pageSize={machinesPage.pageSize}
-            onPageChange={machinesPage.setPage}
+            page={mqttPage.page}
+            pageCount={mqttPage.pageCount}
+            total={mqttPage.total}
+            pageSize={mqttPage.pageSize}
+            onPageChange={mqttPage.setPage}
+          />
+        </div>
+
+        <h3>MANUAL — Old Machines</h3>
+        <div className="table-card">
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Machine</th>
+                  <th>Zone</th>
+                  <th>Job</th>
+                  <th>Product</th>
+                  <th>Cycle (s)</th>
+                  <th>Shot #</th>
+                  <th>Good</th>
+                  <th>Reject</th>
+                  <th>Last imported</th>
+                </tr>
+              </thead>
+              <tbody>
+                {manualPage.pageItems.map((m) => {
+                  const currentJob = currentJobByMachine.get(m.machineId);
+                  const color = STATUS_COLOR[displayStatus(m)] ?? "#57606a";
+                  return (
+                    <tr key={m.machineId}>
+                      <td>
+                        <span className="badge" style={{ background: color }}>
+                          {displayStatus(m)}
+                        </span>
+                      </td>
+                      <td>
+                        <strong>{m.machineId}</strong>
+                        <div style={{ fontSize: 12, color: "#57606a" }}>{m.machineName}</div>
+                      </td>
+                      <td>{m.location ?? "—"}</td>
+                      <td>{currentJob?.jobNumber ?? "—"}</td>
+                      <td>{currentJob?.productCode ?? "—"}</td>
+                      <td>{m.cycleTimeSec ?? "—"}</td>
+                      <td>{m.shotCount ?? "—"}</td>
+                      <td style={{ fontWeight: 600 }}>{currentJob?.goodQty ?? "—"}</td>
+                      <td style={{ fontWeight: 600, color: currentJob && currentJob.rejectQty > 0 ? "#cf222e" : undefined }}>
+                        {currentJob?.rejectQty ?? "—"}
+                      </td>
+                      <td style={{ fontSize: 12, color: "#57606a" }}>
+                        {m.lastImportedAt ? new Date(m.lastImportedAt).toLocaleString() : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {manualMachines.length === 0 && (
+                  <tr className="row-empty">
+                    <td colSpan={10}>No MANUAL machines in this zone.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <Pagination
+            page={manualPage.page}
+            pageCount={manualPage.pageCount}
+            total={manualPage.total}
+            pageSize={manualPage.pageSize}
+            onPageChange={manualPage.setPage}
           />
         </div>
       </section>
@@ -317,109 +332,9 @@ export default function OperatorView() {
           />
         </div>
       </section>
+      </div>
 
-      <section>
-        <h2>Job Lookup</h2>
-        <form onSubmit={searchJob} className="toolbar">
-          <input
-            value={jobQuery}
-            onChange={(e) => setJobQuery(e.target.value)}
-            placeholder="Job Number contains…"
-            style={{ width: 220 }}
-          />
-          <input
-            value={filterProduct}
-            onChange={(e) => setFilterProduct(e.target.value)}
-            placeholder="Product Code contains…"
-            style={{ width: 180 }}
-          />
-          <select value={filterMachineId} onChange={(e) => setFilterMachineId(e.target.value)}>
-            <option value="">All machines</option>
-            {machines.map((m) => (
-              <option key={m.machineId} value={m.machineId}>
-                {m.machineId}
-              </option>
-            ))}
-          </select>
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-            <option value="">Any status</option>
-            {JOB_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-          <select value={sortField} onChange={(e) => setSortField(e.target.value)}>
-            {SORT_FIELDS.map((f) => (
-              <option key={f.value} value={f.value}>
-                Sort: {f.label}
-              </option>
-            ))}
-          </select>
-          <button type="button" onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}>
-            {sortDir === "asc" ? "↑ asc" : "↓ desc"}
-          </button>
-          <button type="submit">Search</button>
-        </form>
-        {jobError && <div className="notice notice-error">{jobError}</div>}
-        <div className="table-card">
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th style={{ cursor: "pointer" }} onClick={() => toggleSort("jobNumber")}>
-                    Job Number{sortArrow("jobNumber")}
-                  </th>
-                  <th>Machine</th>
-                  <th>Product</th>
-                  <th style={{ cursor: "pointer" }} onClick={() => toggleSort("startTime")}>
-                    Started{sortArrow("startTime")}
-                  </th>
-                  <th style={{ cursor: "pointer" }} onClick={() => toggleSort("status")}>
-                    Status{sortArrow("status")}
-                  </th>
-                  <th style={{ cursor: "pointer" }} onClick={() => toggleSort("goodQty")}>
-                    Good{sortArrow("goodQty")}
-                  </th>
-                  <th style={{ cursor: "pointer" }} onClick={() => toggleSort("rejectQty")}>
-                    Reject{sortArrow("rejectQty")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {jobsPage.pageItems.map((j) => (
-                  <tr key={j.jobNumber} onClick={() => openJob(j.jobNumber)} style={{ cursor: "pointer" }}>
-                    <td>{j.jobNumber}</td>
-                    <td>{j.machineId}</td>
-                    <td>{j.productCode}</td>
-                    <td>{new Date(j.startTime).toLocaleString()}</td>
-                    <td>{j.status}</td>
-                    <td>{j.goodQty}</td>
-                    <td>{j.rejectQty}</td>
-                  </tr>
-                ))}
-                {jobResults.length === 0 && (
-                  <tr className="row-empty">
-                    <td colSpan={7}>No jobs found.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <Pagination
-            page={jobsPage.page}
-            pageCount={jobsPage.pageCount}
-            total={jobsPage.total}
-            pageSize={jobsPage.pageSize}
-            onPageChange={jobsPage.setPage}
-          />
-        </div>
-        {job && (
-          <pre style={{ background: "#f6f8fa", padding: 12, borderRadius: 8, marginTop: 4 }}>
-            {JSON.stringify(job, null, 2)}
-          </pre>
-        )}
-      </section>
+      <HistoricalDataSection />
     </div>
   );
 }

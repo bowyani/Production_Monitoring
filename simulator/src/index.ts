@@ -4,9 +4,75 @@ const MACHINE_ID = process.env.MACHINE_ID ?? "IMM-01";
 const MACHINE_NAME = process.env.MACHINE_NAME ?? `Injection Molding Machine ${MACHINE_ID}`;
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL ?? "mqtt://localhost:1883";
 const BACKEND_API_URL = process.env.BACKEND_API_URL ?? "http://localhost:3000/api/v1";
-const TICK_MS = 2000;
 
 const PRODUCT_CODES = ["PVC-90-ELBOW", "PVC-110-TEE", "PVC-63-COUPLING"];
+
+// Every probability/range below used to be a hardcoded magic number sprinkled
+// through tick(). They're pulled out here so the dashboard's Simulator Tuning
+// page (backend/src/api/simulatorControl.ts) can adjust them live over MQTT
+// without a container restart — see the control-topic handling in main().
+type Tuning = {
+  tickMs: number;
+  silentProbability: number;
+  alarmProbability: number;
+  rejectProbability: number;
+  cycleTimeMinSec: number;
+  cycleTimeMaxSec: number;
+  pressureMinBar: number;
+  pressureMaxBar: number;
+  temperatureMinC: number;
+  temperatureMaxC: number;
+};
+
+const DEFAULT_TUNING: Tuning = {
+  tickMs: 2000,
+  silentProbability: 0.2,
+  alarmProbability: 0.015,
+  rejectProbability: 0.03,
+  cycleTimeMinSec: 9,
+  cycleTimeMaxSec: 16,
+  pressureMinBar: 700,
+  pressureMaxBar: 950,
+  temperatureMinC: 195,
+  temperatureMaxC: 245,
+};
+
+let tuning: Tuning = { ...DEFAULT_TUNING };
+
+const CONTROL_TOPIC = `factory/${MACHINE_ID}/control`;
+const CONTROL_STATE_TOPIC = `factory/${MACHINE_ID}/control/state`;
+
+function isFiniteNumber(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v);
+}
+
+// Applies only the well-formed fields from an untrusted MQTT payload, and
+// keeps min <= max on paired range fields so a bad value from the UI can't
+// wedge tick()'s clamp() calls into an inverted, always-out-of-range state.
+function applyTuningPatch(patch: Record<string, unknown>) {
+  const next: Tuning = { ...tuning };
+  for (const key of Object.keys(DEFAULT_TUNING) as (keyof Tuning)[]) {
+    const v = patch[key];
+    if (isFiniteNumber(v)) next[key] = v;
+  }
+  if (next.cycleTimeMinSec > next.cycleTimeMaxSec) {
+    [next.cycleTimeMinSec, next.cycleTimeMaxSec] = [next.cycleTimeMaxSec, next.cycleTimeMinSec];
+  }
+  if (next.pressureMinBar > next.pressureMaxBar) {
+    [next.pressureMinBar, next.pressureMaxBar] = [next.pressureMaxBar, next.pressureMinBar];
+  }
+  if (next.temperatureMinC > next.temperatureMaxC) {
+    [next.temperatureMinC, next.temperatureMaxC] = [next.temperatureMaxC, next.temperatureMinC];
+  }
+  next.tickMs = clamp(next.tickMs, 200, 10000);
+  tuning = next;
+}
+
+function publishTuningState(client: MqttClient) {
+  // Retained so a dashboard opened after the fact (or a backend restart)
+  // still sees the current values instead of "unknown".
+  client.publish(CONTROL_STATE_TOPIC, JSON.stringify({ machineId: MACHINE_ID, tuning }), { retain: true });
+}
 
 type MachineState = {
   status: "RUN" | "STOP" | "ALARM";
@@ -137,12 +203,14 @@ function tick(client: MqttClient) {
 
   // Occasionally stop publishing entirely, without disconnecting from MQTT —
   // this is what the backend watchdog (not MQTT LWT) is designed to catch.
-  // See README.md, "Design Rationale" section.
+  // See README.md, "Design Rationale" section. Raised from the originally
+  // realistic 1% to 20% so OFFLINE actually shows up during a demo instead
+  // of needing a long wait for bad luck.
   if (state.silentTicksRemaining > 0) {
     state.silentTicksRemaining -= 1;
     return;
   }
-  if (state.status !== "ALARM" && Math.random() < 0.01) {
+  if (state.status !== "ALARM" && Math.random() < tuning.silentProbability) {
     state.silentTicksRemaining = 5 + Math.floor(Math.random() * 5);
     console.log(`[${MACHINE_ID}] going silent for ${state.silentTicksRemaining} ticks`);
     return;
@@ -164,7 +232,7 @@ function tick(client: MqttClient) {
       });
       state.activeAlarmCode = null;
     }
-  } else if (state.status === "RUN" && Math.random() < 0.015) {
+  } else if (state.status === "RUN" && Math.random() < tuning.alarmProbability) {
     const def = ALARM_DEFS[Math.floor(Math.random() * ALARM_DEFS.length)];
     state.status = "ALARM";
     state.alarmTicksRemaining = 3 + Math.floor(Math.random() * 4);
@@ -194,7 +262,7 @@ function tick(client: MqttClient) {
   } else if (state.jobNumber && state.status === "RUN") {
     if (state.startupScrapQty > 0) {
       state.startupScrapQty -= 1;
-    } else if (Math.random() < 0.03) {
+    } else if (Math.random() < tuning.rejectProbability) {
       state.rejectQty += 1;
     } else {
       state.goodQty += 1;
@@ -233,12 +301,20 @@ function tick(client: MqttClient) {
     }
   }
 
-  state.cycleTimeSec = clamp(state.cycleTimeSec + (Math.random() - 0.5) * 0.4, 9, 16);
-  state.pressureBar = clamp(state.pressureBar + (Math.random() - 0.5) * 20, 700, 950);
+  state.cycleTimeSec = clamp(
+    state.cycleTimeSec + (Math.random() - 0.5) * 0.4,
+    tuning.cycleTimeMinSec,
+    tuning.cycleTimeMaxSec
+  );
+  state.pressureBar = clamp(
+    state.pressureBar + (Math.random() - 0.5) * 20,
+    tuning.pressureMinBar,
+    tuning.pressureMaxBar
+  );
   state.temperatureC = clamp(
     state.temperatureC + (Math.random() - 0.5) * 2 - (state.temperatureC > 230 ? 3 : 0),
-    195,
-    245
+    tuning.temperatureMinC,
+    tuning.temperatureMaxC
   );
 
   publishJSON(client, `factory/${MACHINE_ID}/telemetry`, {
@@ -259,10 +335,38 @@ async function main() {
   await registerMachine();
 
   const client = mqtt.connect(MQTT_BROKER_URL);
-  client.on("connect", () => console.log(`[${MACHINE_ID}] mqtt connected to ${MQTT_BROKER_URL}`));
+
+  let tickHandle: ReturnType<typeof setInterval> | undefined;
+  function rescheduleTick() {
+    if (tickHandle) clearInterval(tickHandle);
+    tickHandle = setInterval(() => tick(client), tuning.tickMs);
+  }
+
+  client.on("connect", () => {
+    console.log(`[${MACHINE_ID}] mqtt connected to ${MQTT_BROKER_URL}`);
+    client.subscribe(CONTROL_TOPIC);
+    publishTuningState(client);
+    rescheduleTick();
+  });
   client.on("error", (err) => console.error(`[${MACHINE_ID}] mqtt error`, err));
 
-  setInterval(() => tick(client), TICK_MS);
+  // Live fine-tuning channel: the dashboard's Simulator Tuning page patches
+  // this machine's probabilities/ranges without a restart. See
+  // dashboard/src/pages/SimulatorTuningView.tsx and
+  // backend/src/api/simulatorControl.ts.
+  client.on("message", (topic, payload) => {
+    if (topic !== CONTROL_TOPIC) return;
+    try {
+      const patch = JSON.parse(payload.toString());
+      const previousTickMs = tuning.tickMs;
+      applyTuningPatch(patch);
+      console.log(`[${MACHINE_ID}] tuning updated`, tuning);
+      publishTuningState(client);
+      if (tuning.tickMs !== previousTickMs) rescheduleTick();
+    } catch (err) {
+      console.warn(`[${MACHINE_ID}] rejected control message`, err);
+    }
+  });
 }
 
 main();

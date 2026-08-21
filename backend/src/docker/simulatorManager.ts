@@ -16,11 +16,19 @@ function containerName(machineId: string) {
   return `simulator-${machineId}`;
 }
 
+// Looked up by the production-monitoring.machineId label, not by container
+// name — a machine's simulator isn't necessarily one we created ourselves.
+// docker-compose.yml's hardcoded simulator-01/02/03 services carry this same
+// label (see docker-compose.yml), so ensure/stop below see and control those
+// too instead of creating a second, colliding container for the same
+// machineId. A name-based lookup missed those entirely, which is what let a
+// backend-managed container get created alongside a compose one publishing
+// the same MACHINE_ID — duplicate telemetry for one machine.
 async function findContainer(machineId: string) {
   if (!docker) return null;
   const containers = await docker.listContainers({
     all: true,
-    filters: { name: [containerName(machineId)] },
+    filters: { label: [`production-monitoring.machineId=${machineId}`] },
   });
   return containers[0] ?? null;
 }

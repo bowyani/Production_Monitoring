@@ -65,6 +65,10 @@ services:
     depends_on:
       - backend
 
+  # Labeled the same way backend/src/docker/simulatorManager.ts labels the
+  # containers it creates dynamically (production-monitoring.machineId) so
+  # Admin's activate/deactivate lifecycle can find and control these too,
+  # instead of only ones it created itself — see simulatorManager.ts.
   simulator-01:
     build: ./simulator
     image: production-monitoring-simulator:latest
@@ -73,6 +77,9 @@ services:
       MACHINE_NAME: Injection Molding Machine 01
       MQTT_BROKER_URL: mqtt://mosquitto:1883
       BACKEND_API_URL: http://backend:3000/api/v1
+    labels:
+      production-monitoring.role: simulator
+      production-monitoring.machineId: IMM-01
     depends_on:
       backend:
         condition: service_healthy
@@ -85,6 +92,9 @@ services:
       MACHINE_NAME: Injection Molding Machine 02
       MQTT_BROKER_URL: mqtt://mosquitto:1883
       BACKEND_API_URL: http://backend:3000/api/v1
+    labels:
+      production-monitoring.role: simulator
+      production-monitoring.machineId: IMM-02
     depends_on:
       backend:
         condition: service_healthy
@@ -97,6 +107,9 @@ services:
       MACHINE_NAME: Injection Molding Machine 03
       MQTT_BROKER_URL: mqtt://mosquitto:1883
       BACKEND_API_URL: http://backend:3000/api/v1
+    labels:
+      production-monitoring.role: simulator
+      production-monitoring.machineId: IMM-03
     depends_on:
       backend:
         condition: service_healthy

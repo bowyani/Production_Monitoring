@@ -59,6 +59,17 @@ adminRouter.post("/admin/machines", async (req, res) => {
     let simulator: { ok: boolean; reason?: string; reused?: boolean } | undefined;
     if (parsed.data.dataSource === "MQTT") {
       simulator = await ensureSimulatorContainer(machine.machineId, asset.machineName);
+      if (simulator.ok) {
+        // actor "docker" — Docker Engine itself did this, distinct from the
+        // "admin-ui" MACHINE_CREATED entry above (the human's click).
+        await logAudit(
+          "docker",
+          simulator.reused ? "SIMULATOR_CONTAINER_REUSED" : "SIMULATOR_CONTAINER_STARTED",
+          "machine",
+          machine.machineId,
+          null
+        );
+      }
     }
     res.status(201).json({ ...flattenAsset(machine), simulator });
   } catch (err) {
@@ -129,8 +140,10 @@ adminRouter.patch("/admin/machines/:id", async (req, res) => {
   if (machine.dataSource === "MQTT") {
     if (parsed.data.isActive === false) {
       simulator = await stopSimulatorContainer(machine.machineId);
+      if (simulator.ok) await logAudit("docker", "SIMULATOR_CONTAINER_STOPPED", "machine", machine.machineId, null);
     } else if (parsed.data.isActive === true) {
       simulator = await ensureSimulatorContainer(machine.machineId, machine.asset.machineName);
+      if (simulator.ok) await logAudit("docker", "SIMULATOR_CONTAINER_STARTED", "machine", machine.machineId, null);
     }
   }
 

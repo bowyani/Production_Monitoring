@@ -1,47 +1,62 @@
-import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
+import { useEffect } from "react";
+import { BrowserRouter, Routes, Route, NavLink, useLocation } from "react-router-dom";
 import OperatorView from "./pages/OperatorView";
 import AdminView from "./pages/AdminView";
-import HistoryView from "./pages/HistoryView";
 import KpiView from "./pages/KpiView";
 import ErpView from "./pages/ErpView";
 import ChiefOperatorView from "./pages/ChiefOperatorView";
-import AuditLogView from "./pages/AuditLogView";
+import ProductionView from "./pages/ProductionView";
+import PerformanceView from "./pages/PerformanceView";
 import ImportView from "./pages/ImportView";
+import SimulatorTuningView from "./pages/SimulatorTuningView";
 
-const NAV_GROUPS: { label: string; links: { to: string; label: string; end?: boolean }[] }[] = [
+const NAV_GROUPS: {
+  label: string;
+  links: { to: string; label: string; end?: boolean }[];
+}[] = [
   {
-    label: "Floor",
+    label: "Dashboard",
     links: [
-      { to: "/", label: "Operator", end: true },
-      { to: "/history", label: "History" },
+      { to: "/", label: "Operation", end: true },
+      { to: "/production", label: "Production" },
+      { to: "/performance", label: "Performance" },
+      { to: "/kpi", label: "Executive" },
     ],
   },
   {
-    label: "Performance",
+    label: "Management",
     links: [
-      { to: "/kpi", label: "Executive KPI" },
-      { to: "/chief-operator", label: "Chief Operator" },
+      { to: "/chief-operator", label: "Machine Management" },
+      { to: "/import", label: "Manual Import" },
+      { to: "/simulator-tuning", label: "Simulator Tuning" },
     ],
   },
   {
-    label: "Master Data",
-    links: [
-      { to: "/erp", label: "ERP" },
-      { to: "/import", label: "Import" },
-    ],
+    label: "System Settings",
+    links: [{ to: "/admin", label: "Admin" }],
   },
   {
-    label: "System",
-    links: [
-      { to: "/admin", label: "Admin" },
-      { to: "/audit-log", label: "Audit Log" },
-    ],
+    label: "Master Data (Mock)",
+    links: [{ to: "/erp", label: "ERP" }],
   },
 ];
+
+// React Router doesn't reset scroll on navigation — without this, clicking a
+// nav link while scrolled down on a long page (Performance, Admin, ERP...)
+// lands on the new page already scrolled past its own top, which makes the
+// sticky header look broken/missing until the user manually scrolls back up.
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+}
 
 export default function App() {
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <header className="app-nav">
         <div className="app-nav-inner">
           <span className="app-nav-brand">Production Monitoring</span>
@@ -55,7 +70,9 @@ export default function App() {
                       key={link.to}
                       to={link.to}
                       end={link.end}
-                      className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}
+                      className={({ isActive }) =>
+                        "nav-link" + (isActive ? " active" : "")
+                      }
                     >
                       {link.label}
                     </NavLink>
@@ -68,13 +85,14 @@ export default function App() {
       </header>
       <Routes>
         <Route path="/" element={<OperatorView />} />
-        <Route path="/history" element={<HistoryView />} />
+        <Route path="/production" element={<ProductionView />} />
+        <Route path="/performance" element={<PerformanceView />} />
         <Route path="/kpi" element={<KpiView />} />
         <Route path="/erp" element={<ErpView />} />
         <Route path="/chief-operator" element={<ChiefOperatorView />} />
         <Route path="/admin" element={<AdminView />} />
         <Route path="/import" element={<ImportView />} />
-        <Route path="/audit-log" element={<AuditLogView />} />
+        <Route path="/simulator-tuning" element={<SimulatorTuningView />} />
       </Routes>
     </BrowserRouter>
   );

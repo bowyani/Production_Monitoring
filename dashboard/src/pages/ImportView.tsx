@@ -69,13 +69,6 @@ export default function ImportView() {
   return (
     <div className="app-shell" style={{ maxWidth: 800 }}>
       <h1>Import — Legacy / Manual Data</h1>
-      <p style={{ fontSize: 13, color: "#57606a" }}>
-        For machines that can't connect at all — the paper/Excel fallback GAP_ANALYSIS §1.4 calls out as
-        required for a real 200-machine factory ("โรงงานจริงมีเครื่องเก่าที่เชื่อมไม่ได้ปนอยู่ — ต้องมี
-        manual data entry fallback"). This writes directly into <code>production_jobs</code>, bypassing MQTT
-        entirely. If any row in the file is invalid, <strong>nothing is imported</strong> — fix the file and
-        re-upload.
-      </p>
 
       <div>
         <button type="button" onClick={downloadTemplate}>
@@ -156,15 +149,6 @@ export default function ImportView() {
         </section>
       )}
 
-      <section>
-        <h2>Expected columns</h2>
-        <p style={{ fontSize: 13, color: "#57606a" }}>
-          Required: <code>jobNumber, productCode, startTime, goodQty, rejectQty</code>. Optional:{" "}
-          <code>moldId, recipeId, endTime, startupScrapQty, status</code>. Plain comma-separated, no quoted
-          fields — a value with a comma in it will misalign columns. <code>startTime</code>/
-          <code>endTime</code> must be ISO 8601 (e.g. <code>2026-08-19T08:00:00Z</code>).
-        </p>
-      </section>
     </div>
   );
 }

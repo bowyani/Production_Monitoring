@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type Machine, type TelemetryPoint, type StatusEvent, type Alarm, type ProductionJob } from "../lib/api";
+import { api, type Machine, type TelemetryPoint, type StatusEvent, type Alarm } from "../lib/api";
 import { usePagination } from "../lib/usePagination";
 import Pagination from "../components/Pagination";
 
@@ -10,7 +10,11 @@ function toLocalInputValue(d: Date) {
   )}`;
 }
 
-export default function HistoryView() {
+// Static/search half of the Operation tab — pick a machine + window and pull
+// up what already happened, as opposed to the live Operator Dashboard above
+// it. Jobs history moved to the Production page's Job Lookup, so this only
+// covers telemetry/status/alarm history.
+export default function HistoricalDataSection() {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [machineId, setMachineId] = useState("");
   const [from, setFrom] = useState(() => toLocalInputValue(new Date(Date.now() - 24 * 60 * 60 * 1000)));
@@ -18,7 +22,6 @@ export default function HistoryView() {
   const [telemetry, setTelemetry] = useState<TelemetryPoint[]>([]);
   const [events, setEvents] = useState<StatusEvent[]>([]);
   const [machineAlarms, setMachineAlarms] = useState<Alarm[]>([]);
-  const [jobs, setJobs] = useState<ProductionJob[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -38,16 +41,14 @@ export default function HistoryView() {
     try {
       const fromIso = new Date(from).toISOString();
       const toIso = new Date(to).toISOString();
-      const [t, ev, al, jb] = await Promise.all([
+      const [t, ev, al] = await Promise.all([
         api.getMachineHistory(machineId, fromIso, toIso),
         api.getMachineEvents(machineId, fromIso, toIso),
         api.getMachineAlarms(machineId, fromIso, toIso),
-        api.searchJobs({ machineId, from: fromIso, to: toIso, limit: "200" }),
       ]);
       setTelemetry(t);
       setEvents(ev);
       setMachineAlarms(al);
-      setJobs(jb);
     } catch (err) {
       setError(err instanceof Error ? err.message : "failed to load history");
     }
@@ -58,14 +59,14 @@ export default function HistoryView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [machineId]);
 
-  const jobsPage = usePagination(jobs, 10);
   const telemetryPage = usePagination(telemetry, 15);
   const eventsPage = usePagination(events, 15);
   const alarmsPage = usePagination(machineAlarms, 10);
 
   return (
-    <div className="app-shell">
-      <h1>Historical Data</h1>
+    <div className="zone zone-historical">
+      <div className="zone-eyebrow zone-eyebrow-historical">🗂 HISTORICAL — SEARCH PAST RECORDS</div>
+      <h2>Historical Data</h2>
 
       <form onSubmit={load} className="toolbar">
         <select value={machineId} onChange={(e) => setMachineId(e.target.value)}>
@@ -86,55 +87,7 @@ export default function HistoryView() {
       {error && <div className="notice notice-error">{error}</div>}
 
       <section>
-        <h2>Jobs ({jobs.length})</h2>
-        <div className="table-card">
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Job Number</th>
-                  <th>Product</th>
-                  <th>Started</th>
-                  <th>Ended</th>
-                  <th>Status</th>
-                  <th>Good</th>
-                  <th>Reject</th>
-                  <th>Startup Scrap</th>
-                </tr>
-              </thead>
-              <tbody>
-                {jobsPage.pageItems.map((j) => (
-                  <tr key={j.jobNumber}>
-                    <td>{j.jobNumber}</td>
-                    <td>{j.productCode}</td>
-                    <td>{new Date(j.startTime).toLocaleString()}</td>
-                    <td>{j.endTime ? new Date(j.endTime).toLocaleString() : "—"}</td>
-                    <td>{j.status}</td>
-                    <td>{j.goodQty}</td>
-                    <td>{j.rejectQty}</td>
-                    <td>{j.startupScrapQty}</td>
-                  </tr>
-                ))}
-                {jobs.length === 0 && (
-                  <tr className="row-empty">
-                    <td colSpan={8}>No jobs in this range.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <Pagination
-            page={jobsPage.page}
-            pageCount={jobsPage.pageCount}
-            total={jobsPage.total}
-            pageSize={jobsPage.pageSize}
-            onPageChange={jobsPage.setPage}
-          />
-        </div>
-      </section>
-
-      <section>
-        <h2>Telemetry ({telemetry.length} points)</h2>
+        <h3>Telemetry ({telemetry.length} points)</h3>
         <div className="table-card">
           <div className="table-scroll">
             <table>
@@ -178,7 +131,7 @@ export default function HistoryView() {
       </section>
 
       <section>
-        <h2>Status Changes ({events.length})</h2>
+        <h3>Status Changes ({events.length})</h3>
         <div className="table-card">
           <div className="table-scroll">
             <table>
@@ -216,7 +169,7 @@ export default function HistoryView() {
       </section>
 
       <section>
-        <h2>Alarm History ({machineAlarms.length})</h2>
+        <h3>Alarm History ({machineAlarms.length})</h3>
         <div className="table-card">
           <div className="table-scroll">
             <table>

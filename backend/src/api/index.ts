@@ -8,6 +8,7 @@ import { systemRouter } from "./system";
 import { importRouter } from "./import";
 import { erpRouter } from "./erp";
 import { maintenanceRouter } from "./maintenance";
+import { simulatorControlRouter } from "./simulatorControl";
 
 export const apiV1Router = Router();
 
@@ -20,3 +21,4 @@ apiV1Router.use(systemRouter);
 apiV1Router.use(importRouter);
 apiV1Router.use(erpRouter);
 apiV1Router.use(maintenanceRouter);
+apiV1Router.use(simulatorControlRouter);
