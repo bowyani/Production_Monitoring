@@ -86,6 +86,43 @@ erpRouter.put("/erp/machine-assets/:assetId", async (req, res) => {
   res.json(asset);
 });
 
+// Atomic "seed if brand-new, otherwise just touch machineName" — what the
+// simulator's own bootstrap calls (see simulator/src/index.ts
+// registerMachine) instead of a client-side GET-then-PUT. That older
+// two-step pattern had a race window between the existence check and the
+// write (a real ERP edit landing in that window would get clobbered by mock
+// defaults) and forced every one of the simulator's registration retries to
+// fetch the entire asset list just to check a single id. Relying on the
+// DB's own unique-constraint as the "does it already exist" check removes
+// both problems in one round trip: either this INSERT succeeds (genuinely
+// new) or it 409s and we fall back to a plain update of just machineName.
+erpRouter.post("/erp/machine-assets/:assetId/bootstrap", async (req, res) => {
+  const parsed = upsertMachineAssetSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const assetId = req.params.assetId;
+  try {
+    const asset = await prisma.erpMachineAsset.create({ data: { assetId, ...parsed.data } });
+    await logAudit("simulator", "MACHINE_ASSET_BOOTSTRAPPED", "erp_machine_asset", assetId, parsed.data);
+    res.status(201).json(asset);
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      const asset = await prisma.erpMachineAsset.update({
+        where: { assetId },
+        data: { machineName: parsed.data.machineName },
+      });
+      await logAudit("simulator", "MACHINE_ASSET_TOUCHED", "erp_machine_asset", assetId, {
+        machineName: parsed.data.machineName,
+      });
+      res.json(asset);
+      return;
+    }
+    throw err;
+  }
+});
+
 erpRouter.delete("/erp/machine-assets/:assetId", async (req, res) => {
   try {
     await prisma.erpMachineAsset.delete({ where: { assetId: req.params.assetId } });

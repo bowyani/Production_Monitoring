@@ -88,8 +88,22 @@ type MachineState = {
   jobNumber: string | null;
   goodQty: number;
   rejectQty: number;
+  // Ticks left before the scrap phase ends and shots start counting as
+  // good/reject — a countdown, purely internal. `startupScrapQty` below is
+  // the accumulated total published/stored — keeping them separate is what
+  // stops the published total from silently decaying back to 0 once the
+  // scrap phase ends (it used to be the same field, so by job completion
+  // every UPDATE/END overwrote startupScrapQty down to 0, permanently
+  // undercounting every finished job's total by its scrap count and
+  // understating Quality in the KPI calc).
+  startupScrapRemaining: number;
   startupScrapQty: number;
-  jobShotsRemaining: number;
+  // A job order is a request for N *good* units, not N total shots — reject
+  // and scrap are waste on the way there, not progress toward it. Only a
+  // good shot decrements this, so a job with a rough reject run legitimately
+  // takes more total shots (and longer) to finish, same as it would on a
+  // real line.
+  goodShotsRemaining: number;
   silentTicksRemaining: number;
   alarmTicksRemaining: number;
   activeAlarmCode: string | null;
@@ -104,8 +118,9 @@ const state: MachineState = {
   jobNumber: null,
   goodQty: 0,
   rejectQty: 0,
+  startupScrapRemaining: 0,
   startupScrapQty: 0,
-  jobShotsRemaining: 0,
+  goodShotsRemaining: 0,
   silentTicksRemaining: 0,
   alarmTicksRemaining: 0,
   activeAlarmCode: null,
@@ -191,29 +206,23 @@ function buildMockAssetDefaults(machineId: string) {
 async function registerMachine() {
   for (let attempt = 1; attempt <= 15; attempt++) {
     try {
-      const existingRes = await fetch(`${BACKEND_API_URL}/erp/machine-assets`);
-      if (!existingRes.ok) {
-        console.warn(`[${MACHINE_ID}] ERP asset lookup attempt ${attempt} failed: ${existingRes.status}`);
-        await new Promise((r) => setTimeout(r, 2000));
-        continue;
-      }
-      const existingAssets = (await existingRes.json()) as { assetId: string }[];
-      const alreadyExists = existingAssets.some((a) => a.assetId === MACHINE_ID);
-
-      // First-ever boot: seed realistic-looking specs so the demo isn't full
-      // of blank machine assets. Once the asset exists, touch only
-      // machineName — an admin may have hand-edited the rest since.
-      const assetBody = alreadyExists
-        ? { machineName: MACHINE_NAME }
-        : { machineName: MACHINE_NAME, ...buildMockAssetDefaults(MACHINE_ID) };
-
-      const assetRes = await fetch(`${BACKEND_API_URL}/erp/machine-assets/${encodeURIComponent(MACHINE_ID)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(assetBody),
-      });
+      // Atomic seed-if-new: always send full mock defaults + machineName,
+      // the backend decides server-side whether this asset is genuinely new
+      // (mock defaults apply) or already exists (only machineName is
+      // touched, never re-applying mock specs over an admin's hand edits) —
+      // see erp.ts's /bootstrap route. One round trip, no client-side
+      // existence check, so no race window and no need to fetch the whole
+      // asset list on every retry.
+      const assetRes = await fetch(
+        `${BACKEND_API_URL}/erp/machine-assets/${encodeURIComponent(MACHINE_ID)}/bootstrap`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ machineName: MACHINE_NAME, ...buildMockAssetDefaults(MACHINE_ID) }),
+        }
+      );
       if (!assetRes.ok) {
-        console.warn(`[${MACHINE_ID}] ERP asset upsert attempt ${attempt} failed: ${assetRes.status}`);
+        console.warn(`[${MACHINE_ID}] ERP asset bootstrap attempt ${attempt} failed: ${assetRes.status}`);
         await new Promise((r) => setTimeout(r, 2000));
         continue;
       }
@@ -246,14 +255,17 @@ function startJob() {
   state.rejectQty = 0;
   // First few shots after a mold/job change are purge scrap, not reject —
   // see README.md, "Gap Analysis" §1.2.
-  state.startupScrapQty = tuning.startupScrapQty;
-  state.jobShotsRemaining = 30 + Math.floor(Math.random() * 40);
+  state.startupScrapRemaining = tuning.startupScrapQty;
+  state.startupScrapQty = 0;
+  // The order quantity — a target of *good* units, not total shots (see
+  // MachineState.goodShotsRemaining).
+  state.goodShotsRemaining = 30 + Math.floor(Math.random() * 40);
   state.status = "RUN";
   return {
     productCode: PRODUCT_CODES[Math.floor(Math.random() * PRODUCT_CODES.length)],
     moldId: `MOLD-${1 + Math.floor(Math.random() * 5)}`,
     recipeId: `RECIPE-${1 + Math.floor(Math.random() * 5)}`,
-    plannedQty: state.jobShotsRemaining,
+    plannedQty: state.goodShotsRemaining,
   };
 }
 
@@ -319,15 +331,16 @@ function tick(client: MqttClient) {
       jobData: { jobNumber: state.jobNumber, event: "START", ...jobData },
     });
   } else if (state.jobNumber && state.status === "RUN") {
-    if (state.startupScrapQty > 0) {
-      state.startupScrapQty -= 1;
+    if (state.startupScrapRemaining > 0) {
+      state.startupScrapRemaining -= 1;
+      state.startupScrapQty += 1;
     } else if (Math.random() < tuning.rejectProbability) {
       state.rejectQty += 1;
     } else {
       state.goodQty += 1;
+      state.goodShotsRemaining -= 1;
     }
     state.shotCount += 1;
-    state.jobShotsRemaining -= 1;
 
     publishJSON(client, `factory/${MACHINE_ID}/job`, {
       schemaVersion: "1.0",
@@ -342,7 +355,7 @@ function tick(client: MqttClient) {
       },
     });
 
-    if (state.jobShotsRemaining <= 0) {
+    if (state.goodShotsRemaining <= 0) {
       publishJSON(client, `factory/${MACHINE_ID}/job`, {
         schemaVersion: "1.0",
         machineId: MACHINE_ID,

@@ -1,0 +1,186 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1650 950" font-family="Noto Sans Thai, Waree, Arial, Helvetica, sans-serif">
+  <defs>
+    <marker id="erdArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0L10,5L0,10z" fill="#455A64"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1650" height="950" fill="#FAFAFA"/>
+
+  <text x="825" y="28" text-anchor="middle" font-size="20" font-weight="bold" fill="#212121">Production Monitoring System — ERD</text>
+  <text x="825" y="46" text-anchor="middle" font-size="12" fill="#616161">PostgreSQL, 9 ตาราง — เส้นทึบ = Foreign Key จริงระดับ DB, เส้นประ = ความสัมพันธ์เชิง logic เท่านั้น (join ด้วย field ไม่ใช่ FK)</text>
+
+  <!-- ================= Relationship lines (drawn first, under boxes) ================= -->
+  <g fill="none" stroke="#455A64" stroke-width="1.4">
+    <line x1="340" y1="297" x2="420" y2="339" marker-end="url(#erdArrow)"/>
+    <line x1="700" y1="290" x2="780" y2="179" marker-end="url(#erdArrow)"/>
+    <line x1="700" y1="357" x2="780" y2="357" marker-end="url(#erdArrow)"/>
+    <line x1="700" y1="400" x2="780" y2="540" marker-end="url(#erdArrow)"/>
+    <path d="M700,270 Q 950,255 1150,500" marker-end="url(#erdArrow)"/>
+    <line x1="1080" y1="562" x2="1150" y2="532" marker-end="url(#erdArrow)"/>
+  </g>
+  <g fill="none" stroke="#EF6C00" stroke-width="1.4" stroke-dasharray="6,4">
+    <path d="M1300,308 Q 1200,380 1080,500" marker-end="url(#erdArrow)"/>
+    <path d="M1300,700 Q 1200,650 1080,620" marker-end="url(#erdArrow)"/>
+  </g>
+
+  <g font-size="9.5" fill="#37474F">
+    <text x="382" y="292" text-anchor="middle">shared PK</text>
+    <text x="382" y="304" text-anchor="middle">(machine_id = asset_id)</text>
+    <text x="742" y="228" text-anchor="middle">records</text>
+    <text x="742" y="349" text-anchor="middle">records</text>
+    <text x="742" y="460" text-anchor="middle">runs</text>
+    <text x="928" y="248" text-anchor="middle">raises</text>
+    <text x="1117" y="538" text-anchor="middle">occurs during</text>
+  </g>
+  <g font-size="9.5" font-style="italic" fill="#E65100">
+    <text x="1200" y="376" text-anchor="middle">priced via product_code</text>
+    <text x="1200" y="388" text-anchor="middle">(no FK)</text>
+    <text x="1200" y="656" text-anchor="middle">matched by job_number /</text>
+    <text x="1200" y="668" text-anchor="middle">product_code (no FK)</text>
+  </g>
+
+  <!-- ================= MACHINE (hub) ================= -->
+  <rect x="420" y="260" width="280" height="158" rx="6" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+  <rect x="420" y="260" width="280" height="24" rx="6" fill="#2E7D32"/>
+  <rect x="420" y="272" width="280" height="12" fill="#2E7D32"/>
+  <text x="560" y="277" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">MACHINE</text>
+  <text x="432" y="300" font-size="10.5" fill="#1B5E20"><tspan font-weight="bold">machine_id</tspan> — PK</text>
+  <text x="432" y="315" font-size="10.5" fill="#1B5E20">status</text>
+  <text x="432" y="330" font-size="10.5" fill="#1B5E20">last_seen_at</text>
+  <text x="432" y="345" font-size="10.5" fill="#1B5E20">is_active</text>
+  <text x="432" y="360" font-size="10.5" fill="#1B5E20">data_source — "MQTT | MANUAL"</text>
+  <text x="432" y="375" font-size="10.5" fill="#1B5E20">last_maintenance_at</text>
+  <text x="432" y="390" font-size="10.5" fill="#1B5E20">created_at</text>
+  <text x="432" y="405" font-size="10.5" fill="#1B5E20">created_by</text>
+
+  <!-- ================= ERP_MACHINE_ASSET ================= -->
+  <rect x="40" y="180" width="300" height="233" rx="6" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.6"/>
+  <rect x="40" y="180" width="300" height="24" rx="6" fill="#EF6C00"/>
+  <rect x="40" y="192" width="300" height="12" fill="#EF6C00"/>
+  <text x="190" y="197" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">ERP_MACHINE_ASSET</text>
+  <text x="52" y="220" font-size="10.5" fill="#8D4E00"><tspan font-weight="bold">asset_id</tspan> — PK</text>
+  <text x="52" y="235" font-size="10.5" fill="#8D4E00">machine_name</text>
+  <text x="52" y="250" font-size="10.5" fill="#8D4E00">machine_model</text>
+  <text x="52" y="265" font-size="10.5" fill="#8D4E00">rated_power_kw</text>
+  <text x="52" y="280" font-size="10.5" fill="#8D4E00">labor_cost_per_hour</text>
+  <text x="52" y="295" font-size="10.5" fill="#8D4E00">target_cycle_time_sec</text>
+  <text x="52" y="310" font-size="10.5" fill="#8D4E00">maintenance_interval_hours</text>
+  <text x="52" y="325" font-size="10.5" fill="#8D4E00">vendor_name</text>
+  <text x="52" y="340" font-size="10.5" fill="#8D4E00">purchase_date</text>
+  <text x="52" y="355" font-size="10.5" fill="#8D4E00">location</text>
+  <text x="52" y="370" font-size="10.5" fill="#8D4E00">manufacturer_phone</text>
+  <text x="52" y="385" font-size="10.5" fill="#8D4E00">created_at</text>
+  <text x="52" y="400" font-size="10.5" fill="#8D4E00">updated_at</text>
+
+  <!-- ================= MACHINE_TELEMETRY ================= -->
+  <rect x="780" y="100" width="300" height="158" rx="6" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+  <rect x="780" y="100" width="300" height="24" rx="6" fill="#2E7D32"/>
+  <rect x="780" y="112" width="300" height="12" fill="#2E7D32"/>
+  <text x="930" y="117" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">MACHINE_TELEMETRY</text>
+  <text x="792" y="140" font-size="10.5" fill="#1B5E20"><tspan font-weight="bold">id</tspan> — PK</text>
+  <text x="792" y="155" font-size="10.5" fill="#1B5E20"><tspan font-weight="bold">machine_id</tspan> — FK</text>
+  <text x="792" y="170" font-size="10.5" fill="#1B5E20">timestamp</text>
+  <text x="792" y="185" font-size="10.5" fill="#1B5E20">status</text>
+  <text x="792" y="200" font-size="10.5" fill="#1B5E20">cycle_time_sec</text>
+  <text x="792" y="215" font-size="10.5" fill="#1B5E20">shot_count</text>
+  <text x="792" y="230" font-size="10.5" fill="#1B5E20">injection_pressure_bar</text>
+  <text x="792" y="245" font-size="10.5" fill="#1B5E20">barrel_temperature_c</text>
+
+  <!-- ================= MACHINE_STATUS_EVENT ================= -->
+  <rect x="780" y="300" width="300" height="113" rx="6" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+  <rect x="780" y="300" width="300" height="24" rx="6" fill="#2E7D32"/>
+  <rect x="780" y="312" width="300" height="12" fill="#2E7D32"/>
+  <text x="930" y="317" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">MACHINE_STATUS_EVENT</text>
+  <text x="792" y="340" font-size="10.5" fill="#1B5E20"><tspan font-weight="bold">id</tspan> — PK</text>
+  <text x="792" y="355" font-size="10.5" fill="#1B5E20"><tspan font-weight="bold">machine_id</tspan> — FK</text>
+  <text x="792" y="370" font-size="10.5" fill="#1B5E20">from_status</text>
+  <text x="792" y="385" font-size="10.5" fill="#1B5E20">to_status</text>
+  <text x="792" y="400" font-size="10.5" fill="#1B5E20">changed_at</text>
+
+  <!-- ================= PRODUCTION_JOB ================= -->
+  <rect x="780" y="460" width="300" height="203" rx="6" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+  <rect x="780" y="460" width="300" height="24" rx="6" fill="#2E7D32"/>
+  <rect x="780" y="472" width="300" height="12" fill="#2E7D32"/>
+  <text x="930" y="477" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">PRODUCTION_JOB</text>
+  <text x="792" y="500" font-size="10.5" fill="#1B5E20"><tspan font-weight="bold">job_number</tspan> — PK</text>
+  <text x="792" y="515" font-size="10.5" fill="#1B5E20"><tspan font-weight="bold">machine_id</tspan> — FK</text>
+  <text x="792" y="530" font-size="10.5" fill="#1B5E20">product_code — logical FK → PRODUCT_SKU</text>
+  <text x="792" y="545" font-size="10.5" fill="#1B5E20">mold_id</text>
+  <text x="792" y="560" font-size="10.5" fill="#1B5E20">recipe_id</text>
+  <text x="792" y="575" font-size="10.5" fill="#1B5E20">start_time</text>
+  <text x="792" y="590" font-size="10.5" fill="#1B5E20">end_time</text>
+  <text x="792" y="605" font-size="10.5" fill="#1B5E20">good_qty</text>
+  <text x="792" y="620" font-size="10.5" fill="#1B5E20">reject_qty</text>
+  <text x="792" y="635" font-size="10.5" fill="#1B5E20">startup_scrap_qty</text>
+  <text x="792" y="650" font-size="10.5" fill="#1B5E20">status</text>
+
+  <!-- ================= PRODUCT_SKU ================= -->
+  <rect x="1150" y="180" width="300" height="128" rx="6" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.6"/>
+  <rect x="1150" y="180" width="300" height="24" rx="6" fill="#EF6C00"/>
+  <rect x="1150" y="192" width="300" height="12" fill="#EF6C00"/>
+  <text x="1300" y="197" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">PRODUCT_SKU</text>
+  <text x="1162" y="220" font-size="10.5" fill="#8D4E00"><tspan font-weight="bold">product_code</tspan> — PK</text>
+  <text x="1162" y="235" font-size="10.5" fill="#8D4E00">description</text>
+  <text x="1162" y="250" font-size="10.5" fill="#8D4E00">unit_price_thb</text>
+  <text x="1162" y="265" font-size="10.5" fill="#8D4E00">material_cost_per_unit_thb</text>
+  <text x="1162" y="280" font-size="10.5" fill="#8D4E00">created_at</text>
+  <text x="1162" y="295" font-size="10.5" fill="#8D4E00">updated_at</text>
+
+  <!-- ================= ALARM ================= -->
+  <rect x="1150" y="460" width="300" height="143" rx="6" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+  <rect x="1150" y="460" width="300" height="24" rx="6" fill="#2E7D32"/>
+  <rect x="1150" y="472" width="300" height="12" fill="#2E7D32"/>
+  <text x="1300" y="477" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">ALARM</text>
+  <text x="1162" y="500" font-size="10.5" fill="#1B5E20"><tspan font-weight="bold">id</tspan> — PK</text>
+  <text x="1162" y="515" font-size="10.5" fill="#1B5E20"><tspan font-weight="bold">machine_id</tspan> — FK</text>
+  <text x="1162" y="530" font-size="10.5" fill="#1B5E20"><tspan font-weight="bold">job_number</tspan> — FK (nullable)</text>
+  <text x="1162" y="545" font-size="10.5" fill="#1B5E20">alarm_code</text>
+  <text x="1162" y="560" font-size="10.5" fill="#1B5E20">alarm_message</text>
+  <text x="1162" y="575" font-size="10.5" fill="#1B5E20">alarm_timestamp</text>
+  <text x="1162" y="590" font-size="10.5" fill="#1B5E20">cleared_timestamp</text>
+
+  <!-- ================= ERP_JOB_ORDER ================= -->
+  <rect x="1150" y="700" width="300" height="113" rx="6" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.6"/>
+  <rect x="1150" y="700" width="300" height="24" rx="6" fill="#EF6C00"/>
+  <rect x="1150" y="712" width="300" height="12" fill="#EF6C00"/>
+  <text x="1300" y="717" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">ERP_JOB_ORDER</text>
+  <text x="1162" y="740" font-size="10.5" fill="#8D4E00"><tspan font-weight="bold">job_number</tspan> — PK</text>
+  <text x="1162" y="755" font-size="10.5" fill="#8D4E00">product_code — logical FK → PRODUCTION_JOB</text>
+  <text x="1162" y="770" font-size="10.5" fill="#8D4E00">quantity_ordered</text>
+  <text x="1162" y="785" font-size="10.5" fill="#8D4E00">created_at</text>
+  <text x="1162" y="800" font-size="10.5" fill="#8D4E00">updated_at</text>
+
+  <!-- ================= AUDIT_LOG (standalone, polymorphic) ================= -->
+  <rect x="40" y="480" width="300" height="143" rx="6" fill="#ECEFF1" stroke="#455A64" stroke-width="1.6" stroke-dasharray="7,4"/>
+  <rect x="40" y="480" width="300" height="24" rx="6" fill="#455A64"/>
+  <rect x="40" y="492" width="300" height="12" fill="#455A64"/>
+  <text x="190" y="497" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">AUDIT_LOG</text>
+  <text x="52" y="520" font-size="10.5" fill="#37474F"><tspan font-weight="bold">id</tspan> — PK</text>
+  <text x="52" y="535" font-size="10.5" fill="#37474F">actor</text>
+  <text x="52" y="550" font-size="10.5" fill="#37474F">action</text>
+  <text x="52" y="565" font-size="10.5" fill="#37474F">target_type — polymorphic</text>
+  <text x="52" y="580" font-size="10.5" fill="#37474F">target_id</text>
+  <text x="52" y="595" font-size="10.5" fill="#37474F">detail — JSON string</text>
+  <text x="52" y="610" font-size="10.5" fill="#37474F">created_at</text>
+  <text x="52" y="638" font-size="9" font-style="italic" fill="#607D8B">ไม่มี FK ผูกกับตารางไหนเลย — อ้างอิงผ่าน</text>
+  <text x="52" y="650" font-size="9" font-style="italic" fill="#607D8B">target_type + target_id (polymorphic ref)</text>
+
+  <!-- ================= Legend ================= -->
+  <line x1="60" y1="875" x2="110" y2="875" stroke="#455A64" stroke-width="1.4" marker-end="url(#erdArrow)"/>
+  <text x="118" y="879" font-size="11" fill="#333333">Foreign Key (DB-level)</text>
+
+  <line x1="360" y1="875" x2="410" y2="875" stroke="#EF6C00" stroke-width="1.4" stroke-dasharray="6,4" marker-end="url(#erdArrow)"/>
+  <text x="418" y="879" font-size="11" fill="#333333">ความสัมพันธ์เชิง logic เท่านั้น (join ด้วย field, ไม่มี FK)</text>
+
+  <rect x="820" y="866" width="18" height="14" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.2"/>
+  <text x="846" y="878" font-size="11" fill="#333333">Monitoring (real-time)</text>
+
+  <rect x="1060" y="866" width="18" height="14" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.2"/>
+  <text x="1086" y="878" font-size="11" fill="#333333">ERP Master Data (mock)</text>
+
+  <rect x="1300" y="866" width="18" height="14" fill="#ECEFF1" stroke="#455A64" stroke-width="1.2" stroke-dasharray="4,3"/>
+  <text x="1326" y="878" font-size="11" fill="#333333">Standalone / Polymorphic Log</text>
+
+  <text x="60" y="915" font-size="9.5" fill="#78909C">หมายเหตุ: `machines.machine_id` และ `erp_machine_assets.asset_id` เป็น 1:1 กันโดยใช้ค่าเดียวกันเป็น key ทั้งคู่ (shared primary key)</text>
+</svg>

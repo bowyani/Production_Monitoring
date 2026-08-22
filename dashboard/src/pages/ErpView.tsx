@@ -207,6 +207,15 @@ export default function ErpView() {
     e.preventDefault();
     const jobNumber = orderForm.jobNumber.trim();
     if (!jobNumber || !orderForm.productCode.trim() || orderForm.quantityOrdered === "") return;
+
+    // Adding new (not editing) with a Job Number that already exists — most
+    // often one a running job already auto-created — would silently
+    // overwrite it via the upsert endpoint. Same guard as Machine Assets.
+    if (editingOrderNumber === null && orders.some((o) => o.jobNumber === jobNumber)) {
+      alert(`Job Number "${jobNumber}" already exists — use a different one, or click Edit on the existing row to change it.`);
+      return;
+    }
+
     setError(null);
     setSavingOrder(true);
     try {
@@ -505,7 +514,8 @@ export default function ErpView() {
           automatically whenever a production job starts (matching its Job Number/SKU), so this stays
           populated without hand-keying it; you can also add/edit one directly below. Actual good/reject
           quantities produced live on the job itself — see <Link to="/production">Production</Link> for the
-          ordered-vs-produced comparison.
+          ordered-vs-good comparison (an order is fulfilled by good units delivered, not total shots run —
+          reject/scrap don't count toward it).
         </p>
         <form onSubmit={saveOrder} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
           <input

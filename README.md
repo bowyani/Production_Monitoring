@@ -55,7 +55,7 @@ Prototype ระบบ Production Monitoring สำหรับเครื่�
 | #   | ปัญหาที่พบ | แนวทางแก้ไข / สมมติฐานใน Prototype | [อ้างอิงมาตรฐาน](#มาตรฐานอ้างอิงทั้งหมด) |
 | --- | ---------- | ---------------------------------- | ---------------------------------------- |
 
-//คั่น section ว่า row ข้างล่างนี้คือเกี่ยวกับ Business
+| **Business** | | | |
 | 1.1 | โจทย์ไม่ได้ระบุว่าปัจจุบันวางแผนการผลิต (Production Scheduling) ด้วยระบบใด | Job Number สร้างจากระบบภายนอก (ERP) มาก่อน ระบบ monitoring บันทึกผลเทียบกับ Job ที่มีอยู่แล้วเท่านั้น ระบบจริงต้องมี integration layer เชื่อม MES กับ ERP/Planning | ANSI/ISA-95 (IEC 62264) |
 | 1.2 | Injection Molding มี Startup Scrap เสมอ (mold ยังไม่ถึง thermal equilibrium) หากไม่แยกจาก reject ปกติ ตัวเลข Yield Rate จะบิดเบือนในงานสั่งผลิตจำนวนน้อย | แยก field `startup_scrap_qty` ออกจาก reject ทั่วไป — shot แรก 3–5 shot หลัง mold change ถือเป็น purge/startup scrap มาตรฐาน | ไม่มีมาตรฐานสากลกำหนดตัวเลข — เป็น business rule ภายในองค์กร |
 | 1.3 | ต้องแยกว่า STOP คือหยุดตามแผนหรือ downtime จริง เพราะต้นทุนการ restart ไม่เท่ากัน (barrel เย็นตัวต้อง warm-up ใหม่) | ใช้ threshold เวลาแยก planned pause ออกจาก downtime event ระบบจริงต้องจำแนก Planned/Unplanned/Changeover | ISO 22400-2 |
@@ -63,7 +63,7 @@ Prototype ระบบ Production Monitoring สำหรับเครื่�
 | 1.5 | การเชื่อมข้อมูลทั้งโรงงานหมายความว่าหากระบบล่ม (เช่นไฟไหม้) การผลิตทั้งหมดเสี่ยง "ตาบอด" | ไม่ implement Disaster Recovery จริงใน Prototype แต่ออกแบบ config ให้รองรับ replication ระบบจริงต้องมี on-site server คู่กับ cloud replica พร้อม DR runbook | ISO 22301 |
 | 1.6 | ผู้บริหารต้องการ KPI ที่แปลงจาก raw data แล้ว (Cost per Hour, OEE%, Reject rate, Energy) ไม่ใช่ Cycle Time ดิบ | เผื่อ field `machine_rated_power_kw`, `labor_cost_per_hour`, `target_cycle_time_sec` ใน config ล่วงหน้า เพื่อคำนวณ KPI ได้โดยไม่ต้องแก้ schema — **implement แล้ว** เป็น Executive KPI view (`/kpi`) แยกจาก Operator dashboard | ISO 22400-2 |
 | 1.7 | อุตสาหกรรม Injection Molding มี interface มาตรฐานเชื่อมเครื่องจักรกับ MES อยู่แล้ว การออกแบบ schema เองทั้งหมดทำให้เกิดต้นทุน adapter ซ้ำซ้อนเมื่อซื้อเครื่องรุ่นใหม่ที่รองรับมาตรฐานนี้ | Prototype ออกแบบ JSON payload เอง แต่จัดกลุ่ม field ตามแนวคิด `MachineData`/`JobData`/`ProcessData` เพื่อ map ไปมาตรฐานได้ในอนาคต | EUROMAP 77 (เทียบเท่า OPC 40077), IEC 62541 (OPC UA) |
-//คั่น section ว่า ข้างล่างนี้คือเกี่ยวกับ Dev
+| **Dev** | | | |
 | 2.1 | Hardcode รายชื่อเครื่องในโค้ดทำให้การขยายเป็น 200 เครื่องต้อง deploy ใหม่ทุกครั้ง | หน้า Admin เพิ่มเครื่องที่เขียนลง DB ทันทีโดยไม่ต้อง restart service — dynamic MQTT wildcard subscription | — |
 | 2.2 | ระบบที่รันคู่กับสายการผลิตจริง deploy พลาดมีต้นทุนสูงกว่าเว็บทั่วไป | ใช้ versioned migration script (up/down) รองรับ rollback ระดับ schema ระบบจริงควรใช้ blue-green deployment หรือ feature flag | — |
 | 2.3 | Backup ฐานข้อมูลขนาดใหญ่ระหว่างรับข้อมูล real-time จาก 200 เครื่องพร้อมกัน อาจทำให้ query ช้าลง | ใช้ scheduled `pg_dump` ที่ off-peak hour ใน Prototype ระบบจริงต้องใช้ read replica แยกสำหรับ backup ไม่ให้แย่ง I/O กับ write path หลัก | ISO/IEC 27001 Annex A.12.3 |
@@ -72,8 +72,7 @@ Prototype ระบบ Production Monitoring สำหรับเครื่�
 | 2.6 | การอ่านค่าที่เป็น float/double word (เช่น Barrel Temperature) โดยไม่รับประกัน buffer consistency อาจเกิด "torn read" ทำให้ค่าอ่านผิดเพี้ยนแบบสุ่ม | ใช้ Modbus library ที่รับประกัน atomic multi-register read พร้อม sanity check ฝั่ง Backend (ค่ากระโดดเกิน physical limit ให้ flag เป็น suspect) | Modbus Application Protocol Specification |
 | 2.7 | Modbus function 03/04/16 อ่าน/เขียนได้สูงสุด 125 holding registers ต่อ 1 request เมื่อเพิ่ม sensor ในอนาคตอาจเกินเพดานนี้ | วางแผน logic แบ่ง (chunking) เป็นหลาย request โดยยังคง cycle time รวมให้อยู่ในเกณฑ์ที่ยอมรับได้ | Modbus Application Protocol Specification |
 
-//คั่น section ว่า ข้างล่างนี้คือเกี่ยวกับ Engineering
-
+| **Engineering** | | | |
 | 3.1 | Path การ monitoring (PLC → Gateway → MQTT → Dashboard) มีจุดอ่อนที่ยอมรับได้ในงาน monitoring แต่ยอมรับไม่ได้ในงาน safety (network latency, broker ล่ม) | Emergency Shutdown ต้องเป็นวงจร hardwired แยกอิสระ ทำงานแบบ fail-safe ตัดไฟผ่าน safety relay/contactor โดยตรง ระบบ monitoring รับสถานะมา log และแจ้งเตือนเท่านั้น | IEC 60204-1, ISO 13849-1, IEC 62061, EUROMAP 78/78.1 |
 | 3.2 | หาก Circuit Breaker ตัดไฟทั้งไลน์ทุกครั้งที่เครื่องเดียวมีปัญหา จะเสียเวลา restart ทุกเครื่องโดยไม่จำเป็น | ทำ selective coordination study (time-current curve) ให้ CB ตัดเฉพาะจุดใกล้ fault ที่สุดก่อน | IEC 60947-2, IEEE 242 |
 | 3.3 | สาย Ethernet ทองแดง (Cat5e/Cat6) จำกัดระยะ 100 เมตรต่อ segment โรงงานขนาดใหญ่มักมีระยะเกินนี้ | ใช้ Fiber optic + media converter สำหรับ backbone ระหว่างโซนที่ไกลกัน | IEEE 802.3, TIA/EIA-568 |
@@ -83,7 +82,7 @@ Prototype ระบบ Production Monitoring สำหรับเครื่�
 | 3.7 | การเพิ่ม I/O module ให้เครื่องเก่าต้องเช็ค power budget (5VDC/24VDC) ของ CPU เดิม | ทำ site survey ก่อน retrofit ทุกเครื่อง คำนวณ power budget ตาม datasheet ก่อนเลือกซื้อ module | Siemens S7-200 System Manual |
 | 3.8 | ความสั่นสะเทือนต่อเนื่องจากกลไก clamping/injection ทำให้ terminal แบบ screw หลวมตามเวลา เกิดสัญญาณหลุดเป็นระยะ (false OFFLINE) | ใช้ terminal แบบ spring-loaded ในจุดที่ใกล้แหล่งสั่นสะเทือน | — |
 | 3.9 | การซ่อมบำรุงเครื่องเดียวควรทำได้โดยไม่กระทบเครื่องข้างเคียงในไลน์เดียวกัน | ออกแบบ physical isolation (MCCB แบบ withdrawable ที่มีตำแหน่ง ON/OFF/TEST/ISOLATE) ไว้ตั้งแต่ต้น ไม่พึ่ง software toggle อย่างเดียว | IEC 60947-3, ISO 14118 |
-| 3.10 | เครือข่ายฝั่ง IT (ERP, Office PC) และ OT (PLC, SCADA) ต้องแยกโซนชัดเจน //ลิ่งไปหัวข้อ IT OT แยกกัน | วางสถาปัตยกรรมผ่าน Industrial DMZ ตาม Purdue Model | IEC 62443, Purdue Enterprise Reference Architecture |
+| 3.10 | เครือข่ายฝั่ง IT (ERP, Office PC) และ OT (PLC, SCADA) ต้องแยกโซนชัดเจน (ดู [IT กับ OT ต่างกันอย่างไร](#it-ot-convergence)) | วางสถาปัตยกรรมผ่าน Industrial DMZ ตาม Purdue Model | IEC 62443, Purdue Enterprise Reference Architecture |
 
 ### Use Case
 
@@ -122,32 +121,6 @@ Prototype ระบบ Production Monitoring สำหรับเครื่�
 ---
 
 # Solution
-
-## สมมติฐานและข้อจำกัด
-
-//ตรงนี้อาจต้องเอาแต่ละ bullet มารวบเป็น workflow diagram swim lane
-
-- เครื่องจักรต้องมี asset record ใน ERP ก่อนเสมอ แล้วลงทะเบียนผ่าน Admin API ก่อนเสมอ ระบบจะไม่ auto-register จาก MQTT — Simulator เรียก ERP API เพื่อสร้าง/อัปเดต asset ของตัวเองแล้วเรียก Admin API เพื่อลงทะเบียนตอนเริ่มทำงาน จำลองขั้นตอน commissioning ของช่างเทคนิคจริงที่เครื่องมักถูกบันทึกไว้ใน ERP อยู่ก่อนแล้ว
-- Admin ลงทะเบียนเครื่องจักรใหม่ด้วยการ "เลือก" แถวใน `erp_machine_assets` ที่มีอยู่แล้ว ไม่ใช่พิมพ์ชื่อ/สเปคเข้าไปเอง เพื่อไม่ให้เครื่องจักรจริงเครื่องเดียวถูกลงทะเบียนซ้ำด้วยข้อมูลสเปคที่ไม่ตรงกัน
-- Job Number มาจากระบบภายนอก (สมมติว่าเป็น ERP) — ระบบ Monitoring บันทึกผลเทียบกับ Job ที่มีอยู่แล้วเท่านั้น หน้า ERP (mock) ในระบบนี้ทำหน้าที่เป็น price book ของ SKU, asset master data ของเครื่องจักร, และ mock job order (Job Number/SKU/จำนวนสั่ง — สร้างอัตโนมัติทุกครั้งที่ job เริ่มผลิต) ไม่ใช่ระบบ Order/Job management เต็มรูปแบบ — การเทียบยอดสั่งซื้อกับยอดผลิตจริงเป็นแค่การ join แสดงผลตาม `job_number`/`product_code` ในหน้า Production เท่านั้น ไม่ใช่ FK ผูกกันจริงระดับ DB
-- OFFLINE ตรวจจับด้วย watchdog (เช็ค `last_seen_at` ทุก 5 วิ, threshold ปรับได้ผ่าน env) ไม่ใช่ MQTT Last Will เพราะโจทย์คือเครื่อง "หยุดส่งข้อมูล" ไม่ใช่ "ตัดการเชื่อมต่อ"
-- Deactivate เครื่องจักรใน Admin = หยุดรับ telemetry จาก MQTT (status → `INACTIVE`) แต่ไม่ได้สั่งเครื่องจริงหยุดทำงาน — คนละเรื่องกับ Emergency Stop ที่ต้องเป็น hardwired safety circuit แยกอิสระ (ดู [Future Vision](#future-vision-สู่-unmanned-lights-out-operation))
-- Performance/OEE ต่อเครื่องจะว่าง (`—`) จนกว่าจะตั้งค่า Target Cycle Time ในหน้า ERP (asset master data ของเครื่องนั้น) — ไม่ default ค่าเดาเอง
-- Simulator ทำหน้าที่แทน ERP เปิด Job เอง แทนการสร้างหน้า mock-ERP แยก\*\* — ตรงกับสมมติฐานว่า Job Number มาจากภายนอกอยู่แล้ว ลดความซับซ้อนให้โฟกัสที่ Monitoring เป็นหลัก ข้อเสีย: แยกขอบเขต MES/ERP ไม่ชัดเท่าของจริง
-- Admin page + dynamic MQTT wildcard subscription แทนการ hardcode รายชื่อเครื่องแล้ว deploy ใหม่\*\* — Direction.md ข้อ 7 ระบุตรงๆ ว่ากรรมการอาจขอให้ "เพิ่มเครื่องจักร" กลางการ demo สด ถ้าไม่มีความสามารถนี้จะทำ requirement ข้อนี้ไม่ผ่านทันที ข้อเสีย: ใช้เวลาพัฒนาเพิ่มขึ้นเล็กน้อยเพราะต้องทำทั้ง Admin UI และ backend ฝั่ง dynamic subscribe
-- สถานะ (Status) ของเครื่องจักรมีความหมายว่าอะไรบ้าง
-  | Status | ความหมาย | นับเป็น Uptime หรือ Downtime |
-  | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
-  | `RUN` | เครื่องกำลังทำงานผลิตอยู่ | Uptime |
-  | `STOP` | เครื่องหยุดโดยตั้งใจ เช่น รอรอบงานถัดไป เปลี่ยนโหมด/แม่พิมพ์ระหว่างงาน (Intentional downtime) | Downtime |
-  | `ALARM` | เครื่องแจ้งเตือนปัญหา (ดูรายละเอียดเพิ่มที่ตาราง `alarms`) | Downtime |
-  | `OFFLINE` | ไม่มีข้อมูล telemetry เข้ามาเกิน threshold ที่ตั้งไว้ (`BACKEND_WATCHDOG_OFFLINE_THRESHOLD_SEC`, ค่าเริ่มต้น 15 วินาที) — Watchdog job ฝั่ง backend เป็นคนตั้งสถานะนี้เอง ไม่ใช่เครื่องจักรส่งมา | Downtime (นับแยกเป็น "Offline" ไม่รวมกับ Error) |
-
-- `OFFLINE` ยังเป็นค่าเริ่มต้น (`@default("OFFLINE")`) ของเครื่องที่เพิ่งลงทะเบียนใหม่หรือถูก reactivate ด้วย เพราะยังไม่มี telemetry เข้ามา
-- เครื่องที่ `dataSource = "MANUAL"` (ไม่มีการเชื่อมต่อจริง ข้อมูลมาจาก CSV import อย่างเดียว) จะไม่มี Watchdog ตรวจจับ `OFFLINE` ให้ เพราะไม่มี telemetry ให้ตรวจตั้งแต่แรก (ดู [Gap Analysis §1.4](#1-การวิเคราะห์เชิงธุรกิจ-business-analysis))
-- ถ้าเจอ status อื่นที่ไม่ใช่ 4 ค่านี้ (เช่น `IDLE` ที่หลุดมาจากไฟล์ CSV ที่ import) ระบบจะยังนับเป็น Downtime แต่แยกเก็บไว้เป็นหมวด "อื่นๆ" แทนที่จะทิ้งไปเฉยๆ
-
-//
 
 ## Existing Technology
 
@@ -188,10 +161,12 @@ Level 0-1 คือ "ตัวเครื่องจักรกับสม�
 
 ทำไมไม่ใช้วิธีเดียวกันทั้งหมด — Modbus เร็วมากแต่ใช้ได้แค่ในสายไฟ/เครือข่ายเฉพาะที่ระยะใกล้ MQTT เหมาะกับข้อมูลจำนวนมากจากอุปกรณ์หลายพันตัวขึ้นไปบน Cloud โดยประหยัดทรัพยากร REST API เหมาะกับให้ระบบธุรกิจ "ขอข้อมูลสรุป" เป็นครั้งคราวมากกว่าข้อมูลดิบรัวๆ ตลอดเวลา
 
-Prototype นี้ใช้ MQTT //TODO: อาจต้องเพิ่มว่า MQTT ในที่นี้หมายถึงจำลองว่า format เป็น mqtt (อิงตามมาตฐานการเขียน link ไปหัวข้อ API, GAP1.7) แต่ตัว prototype นี้ก็ทำบนคอมหมด ไม่มีเครื่องจักรจริง//
+Prototype นี้ใช้ MQTT (payload format จำลองตามที่ระบุใน [API / Message Format](#api--message-format))
 เชื่อม Machine Simulator กับระบบกลาง แล้วใช้ REST API เชื่อมระบบกลางกับ Dashboard — ตรงตามระดับ IoT/Monitoring และ Enterprise ในตารางข้างต้น
 
 > **GAP ข้อ 2.5–2.7 เป็น Future Scope** เกี่ยวข้องกับตอนเชื่อมต่อ PLC จริงผ่าน Modbus เท่านั้น ไม่ใช่ส่วนหนึ่งของ Prototype ปัจจุบัน เพราะ Machine Simulator สวมบทบาทแทน PLC ทั้งก้อน จึงข้ามขั้นตอน "PLC poll ค่าจาก sensor ผ่าน Modbus" ไป — สร้างค่า Cycle Time/Pressure/Temperature เองแล้ว publish ผ่าน MQTT โดยตรง ไม่มี Modbus ปรากฏในโค้ด Prototype เลย สามข้อนี้แสดงความเข้าใจ pipeline ทั้งสายสำหรับตอนขยายไปเชื่อมเครื่องจักรจริง
+
+<a id="it-ot-convergence"></a>
 
 3. IT กับ OT ต่างกันอย่างไร และทำไมต้อง "Convergence"
 
@@ -220,70 +195,9 @@ Prototype นี้ใช้ MQTT //TODO: อาจต้องเพิ่ม�
 
 ## Architecture Diagram
 
-อัปเดตหลังเพิ่มระบบ ERP (mock) — เดิมมีแค่ `machines` เก็บทั้งสถานะและสเปคเครื่องจักรในตัวเดียว ตอนนี้แยกฝั่ง Level 4 (ERP: `erp_machine_assets` + `product_skus`) ออกจาก Level 2 (`machines` เหลือแค่สถานะการเชื่อมต่อ) ชัดเจนขึ้น พร้อมเพิ่มหน้า ERP / Chief Operator (maintenance) ทางฝั่ง Dashboard และให้ Backend เป็นคนคุม lifecycle ของ Simulator container เองผ่าน Docker socket (superseded [`architecture_diagram.svg`](architecture_diagram.svg) เดิม)
+อัปเดตหลังเพิ่มระบบ ERP (mock) — เดิมมีแค่ `machines` เก็บทั้งสถานะและสเปคเครื่องจักรในตัวเดียว ตอนนี้แยกฝั่ง Level 4 (ERP: `erp_machine_assets` + `product_skus`) ออกจาก Level 2 (`machines` เหลือแค่สถานะการเชื่อมต่อ) ชัดเจนขึ้น พร้อมเพิ่มหน้า ERP / Machine Management (maintenance) ทางฝั่ง Dashboard และให้ Backend เป็นคนคุม lifecycle ของ Simulator container เองผ่าน Docker socket
 
-```mermaid
-flowchart TB
-    subgraph L0["Level 0-1 — Field (Simulated Machines)"]
-        SIM1["Machine Simulator<br/>IMM-01"]
-        SIM2["Machine Simulator<br/>IMM-02"]
-        SIM3["Machine Simulator<br/>IMM-03"]
-        SIMN["+ IMM-0N<br/>(เพิ่มได้ไม่จำกัดผ่าน Admin)"]
-    end
-
-    subgraph BROKER["MQTT Broker (Mosquitto)"]
-        TOPICS["factory/+/telemetry<br/>factory/+/job<br/>factory/+/alarm<br/>(wildcard subscribe)"]
-    end
-
-    subgraph BACKEND["Backend Service — Node.js/TypeScript (Level 2)"]
-        MQTTSUB["MQTT Subscriber<br/>+ Zod payload validator"]
-        WATCHDOG["Watchdog<br/>(OFFLINE detection, poll ทุก 5s)"]
-        DOCKERMGR["simulatorManager.ts<br/>(Docker lifecycle control)"]
-        REST["REST API /api/v1<br/>machines · jobs · alarms · kpi<br/>admin · import<br/>erp · maintenance (ใหม่)"]
-        WSSRV["WebSocket Server /live"]
-    end
-
-    subgraph DOCKERHOST["Docker Engine (host)"]
-        DSOCK["/var/run/docker.sock"]
-    end
-
-    DB[("PostgreSQL — Master Data ร่วม<br/>— Monitoring —<br/>machines · machine_telemetry<br/>machine_status_events · production_jobs<br/>alarms · audit_log<br/>— ERP (mock), พักไว้ถังเดียวกัน —<br/>erp_machine_assets · product_skus")]
-
-    ERPEXT["🏢 ERP System (ของจริง)<br/>เช่น SAP / Oracle / Odoo<br/>ยังไม่ implement ใน Prototype นี้"]
-
-    subgraph DASH["Dashboard (React)"]
-        OP["Operation"]
-        PROD["Production<br/>(Job Lookup + Mold/Recipe/Order)"]
-        PERF["Performance<br/>(downtime/maintenance)"]
-        KPI["Executive KPI<br/>(รวม Revenue/Margin)"]
-        ERPV["ERP<br/>(Machine Assets · SKU · Job Orders)"]
-        CO["Machine Management"]
-        ADMIN["Admin<br/>(รวม System Health + Audit Log)"]
-        IMPORT["Manual Import"]
-        SIMTUNE["Simulator Tuning"]
-    end
-
-    SIM1 -- publish --> TOPICS
-    SIM2 -- publish --> TOPICS
-    SIM3 -- publish --> TOPICS
-    SIMN -- publish --> TOPICS
-    TOPICS --> MQTTSUB
-    MQTTSUB -- write --> DB
-    WATCHDOG -- mark OFFLINE --> DB
-    MQTTSUB -- broadcast --> WSSRV
-    WATCHDOG -- broadcast --> WSSRV
-    REST <-->|"SQL (Prisma)"| DB
-    WSSRV ==>|push| DASH
-    DASH -->|"REST calls"| REST
-    ADMIN -->|"register / deactivate"| DOCKERMGR
-    DOCKERMGR -->|"create / start / stop"| DSOCK
-    DSOCK -.->|"runs container"| SIM1
-    SIM1 -.->|"self-register asset<br/>PUT /erp/machine-assets"| REST
-    SIM1 -.->|"self-register machine<br/>POST /admin/machines"| REST
-    ERPEXT -.->|"sync / pull master data<br/>(เฉพาะระบบจริง)"| DB
-
-    style ERPEXT fill:#ECEFF1,stroke:#455A64,color:#263238,stroke-dasharray:5 5
-```
+![Architecture Diagram](architecture_diagram.svg)
 
 **สิ่งที่เปลี่ยนจากเดิม**: (1) `erp_machine_assets`/`product_skus` แยกออกมาเป็น Level 4 (ERP mock) ของตัวเอง ไม่ผูกอยู่ใน `machines` อีกต่อไป (2) Backend เพิ่ม `simulatorManager.ts` คุม container ของ Simulator ตรงผ่าน Docker socket แทนให้ผู้ใช้รัน `docker compose run` เอง (3) Simulator เรียก ERP API เพื่อ self-register asset ของตัวเองก่อนเรียก Admin API (4) Dashboard เพิ่มหน้า ERP และ Chief Operator, ยุบ System Health เข้า Admin
 
@@ -295,56 +209,15 @@ flowchart TB
 
 ลำดับการไหลของข้อมูลตั้งแต่ commissioning เครื่องใหม่ไปจนถึงข้อมูลขึ้นจอ ครอบคลุมทั้ง 3 เส้นทางหลัก: MQTT (steady-state telemetry), REST (commissioning + query), และ WebSocket (real-time push)
 
-```mermaid
-sequenceDiagram
-    actor Admin as ผู้ดูแลระบบ
-    participant Dash as Dashboard
-    participant REST as Backend REST API
-    participant Docker as Docker Engine
-    participant Sim as Machine Simulator
-    participant MQTT as MQTT Broker
-    participant Sub as MQTT Subscriber
-    participant DB as PostgreSQL
-    participant WS as WebSocket /live
+![Data Flow Diagram](data_flow_diagram.svg)
 
-    Note over Admin,Docker: 1) Commissioning — เพิ่มเครื่องจักรใหม่
-    Admin->>Dash: เลือก ERP asset + กด Add Machine
-    Dash->>REST: POST /admin/machines {assetId, dataSource}
-    REST->>DB: insert machines row
-    REST->>Docker: ensureSimulatorContainer() ผ่าน docker.sock
-    Docker-->>Sim: start container simulator-{machineId}
-    Sim->>REST: PUT /erp/machine-assets/{id} (self-register spec)
-    REST->>DB: upsert erp_machine_assets
-    Sim->>REST: POST /admin/machines (idempotent, tolerate 409)
+> Note
 
-    Note over Sim,WS: 2) Steady state — telemetry ทุก 2 วินาที
-    loop ทุก tick
-        Sim->>MQTT: publish factory/{id}/telemetry|job|alarm
-        MQTT->>Sub: wildcard delivery factory/+/...
-        Sub->>Sub: validate ด้วย Zod schema
-        alt payload ผ่าน validation และเครื่อง active
-            Sub->>DB: write telemetry / status_event / job / alarm
-            Sub->>WS: broadcast event
-            WS-->>Dash: push telemetry/job/alarm/status
-        else เครื่องไม่ได้ลงทะเบียน/ถูก deactivate
-            Sub->>Sub: reject + log warning
-        end
-    end
-
-    Note over REST,WS: 3) Watchdog — ตรวจ OFFLINE ทุก 5 วินาที
-    loop ทุก 5s
-        REST->>DB: เช็ค last_seen_at ทุกเครื่อง
-        REST->>DB: mark OFFLINE + insert status_event ถ้าเกิน threshold
-        REST->>WS: broadcast status
-        WS-->>Dash: push status update
-    end
-
-    Note over Dash,DB: 4) Dashboard query — ERP / Production / Performance / KPI
-    Dash->>REST: GET /erp/summary หรือ /maintenance/overview หรือ /kpi/summary
-    REST->>DB: join machines + erp_machine_assets + production_jobs + product_skus + alarms + status_events
-    DB-->>REST: rows
-    REST-->>Dash: computed KPI / margin / downtime JSON
-```
+- เครื่องจักรต้องมี asset record ใน ERP ก่อนเสมอ แล้วลงทะเบียนผ่าน Admin API ก่อนเสมอ ระบบจะไม่ auto-register จาก MQTT — Simulator เรียก ERP API เพื่อสร้าง/อัปเดต asset ของตัวเองแล้วเรียก Admin API เพื่อลงทะเบียนตอนเริ่มทำงาน จำลองขั้นตอน commissioning ของช่างเทคนิคจริงที่เครื่องมักถูกบันทึกไว้ใน ERP อยู่ก่อนแล้ว
+- Admin ลงทะเบียนเครื่องจักรใหม่ด้วยการ "เลือก" แถวใน `erp_machine_assets` ที่มีอยู่แล้ว ไม่ใช่พิมพ์ชื่อ/สเปคเข้าไปเอง เพื่อไม่ให้เครื่องจักรจริงเครื่องเดียวถูกลงทะเบียนซ้ำด้วยข้อมูลสเปคที่ไม่ตรงกัน
+- Job Number มาจากระบบภายนอก (สมมติว่าเป็น ERP) — ระบบ Monitoring บันทึกผลเทียบกับ Job ที่มีอยู่แล้วเท่านั้น หน้า ERP (mock) ในระบบนี้ทำหน้าที่เป็น price book ของ SKU, asset master data ของเครื่องจักร, และ mock job order (Job Number/SKU/จำนวนสั่ง — สร้างอัตโนมัติทุกครั้งที่ job เริ่มผลิต) ไม่ใช่ระบบ Order/Job management เต็มรูปแบบ
+- Deactivate เครื่องจักรใน Admin = หยุดรับ telemetry จาก MQTT (status → `INACTIVE`) แต่ไม่ได้สั่งเครื่องจริงหยุดทำงาน — คนละเรื่องกับ Emergency Stop ที่ต้องเป็น hardwired safety circuit แยกอิสระ (ดู [Future Vision](#future-vision-สู่-unmanned-lights-out-operation))
+- Admin page + dynamic MQTT wildcard subscription แทนการ hardcode รายชื่อเครื่องแล้ว deploy ใหม่
 
 ---
 
@@ -370,106 +243,7 @@ PostgreSQL, 9 ตาราง (normalize ไม่ denormalize — join ได�
 
 `product_skus` ↔ `production_jobs` และ `erp_job_orders` ↔ `production_jobs` เป็นความสัมพันธ์เชิง logic เท่านั้น (join กันด้วย `product_code`/`job_number` ในโค้ดฝั่ง `erp.ts`/`kpi.ts`/หน้า Production) ไม่ได้ผูกเป็น foreign key จริงระดับ DB — แสดงเป็นเส้นประในไดอะแกรม `audit_log` เป็น polymorphic log (`target_type`+`target_id` อ้างได้ทั้ง machine/asset/sku) จึงไม่มี FK ผูกกับตารางไหนเลย
 
-```mermaid
-erDiagram
-    MACHINE ||--o| ERP_MACHINE_ASSET : "shared PK (machine_id = asset_id)"
-    MACHINE ||--o{ MACHINE_TELEMETRY : records
-    MACHINE ||--o{ MACHINE_STATUS_EVENT : records
-    MACHINE ||--o{ PRODUCTION_JOB : runs
-    MACHINE ||--o{ ALARM : raises
-    PRODUCTION_JOB ||--o{ ALARM : "occurs during"
-    PRODUCT_SKU ||..o{ PRODUCTION_JOB : "priced via product_code (no FK)"
-    ERP_JOB_ORDER ||..o{ PRODUCTION_JOB : "matched by job_number/product_code (no FK)"
-
-    MACHINE {
-        string machine_id PK
-        string status
-        datetime last_seen_at
-        boolean is_active
-        string data_source "MQTT | MANUAL"
-        datetime last_maintenance_at
-        datetime created_at
-        string created_by
-    }
-    ERP_MACHINE_ASSET {
-        string asset_id PK
-        string machine_name
-        string machine_model
-        decimal rated_power_kw
-        decimal labor_cost_per_hour
-        decimal target_cycle_time_sec
-        decimal maintenance_interval_hours
-        string vendor_name
-        datetime purchase_date
-        string location
-        string manufacturer_phone
-        datetime created_at
-        datetime updated_at
-    }
-    MACHINE_TELEMETRY {
-        bigint id PK
-        string machine_id FK
-        datetime timestamp
-        string status
-        decimal cycle_time_sec
-        int shot_count
-        decimal injection_pressure_bar
-        decimal barrel_temperature_c
-    }
-    MACHINE_STATUS_EVENT {
-        bigint id PK
-        string machine_id FK
-        string from_status
-        string to_status
-        datetime changed_at
-    }
-    PRODUCTION_JOB {
-        string job_number PK
-        string machine_id FK
-        string product_code "logical FK -> PRODUCT_SKU"
-        string mold_id
-        string recipe_id
-        datetime start_time
-        datetime end_time
-        int good_qty
-        int reject_qty
-        int startup_scrap_qty
-        string status
-    }
-    ALARM {
-        bigint id PK
-        string machine_id FK
-        string job_number FK "nullable"
-        string alarm_code
-        string alarm_message
-        datetime alarm_timestamp
-        datetime cleared_timestamp
-    }
-    PRODUCT_SKU {
-        string product_code PK
-        string description
-        decimal unit_price_thb
-        decimal material_cost_per_unit_thb
-        datetime created_at
-        datetime updated_at
-    }
-    ERP_JOB_ORDER {
-        string job_number PK
-        string product_code "logical FK -> PRODUCTION_JOB.product_code"
-        int quantity_ordered
-        datetime created_at
-        datetime updated_at
-    }
-    AUDIT_LOG {
-        bigint id PK
-        string actor
-        string action
-        string target_type "polymorphic ref, no FK"
-        string target_id
-        string detail "JSON string"
-        datetime created_at
-    }
-```
+![ERD](erd_diagram.svg)
 
 Schema เต็ม: [`backend/prisma/schema.prisma`](backend/prisma/schema.prisma) — migration ทุกไฟล์ commit อยู่ใน `backend/prisma/migrations/` (generate แบบมีเลขลำดับ พร้อม track ประวัติอัตโนมัติผ่าน Prisma Migrate แทนการรัน SQL ALTER สดๆ) รัน rollback/ดูประวัติได้ปกติ
 

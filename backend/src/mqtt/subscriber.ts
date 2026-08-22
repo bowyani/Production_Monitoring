@@ -156,17 +156,24 @@ async function handleJob(payload: ReturnType<typeof jobSchema.parse>) {
 
     // Auto-seed the mock "order obtained from ERP" (see schema.prisma
     // ErpJobOrder) from whatever the simulator just decided to produce, so
-    // Job Orders in ERP stays populated without anyone hand-keying it. Best
-    // effort — a job without a productCode/plannedQty still gets a row.
-    await prisma.erpJobOrder.upsert({
-      where: { jobNumber: jobData.jobNumber },
-      create: {
-        jobNumber: jobData.jobNumber,
-        productCode: jobData.productCode ?? "UNKNOWN",
-        quantityOrdered: jobData.plannedQty ?? 0,
-      },
-      update: {},
-    });
+    // Job Orders in ERP stays populated without anyone hand-keying it.
+    // Skipped entirely without a productCode — every real simulator START
+    // always sends one, so a START missing it is a malformed/foreign
+    // publisher; seeding a permanent "UNKNOWN" row would pollute the SKU
+    // dimension in Executive KPI's charts with no way to tell it apart from
+    // a real product later. quantityOrdered falling back to 0 is fine on its
+    // own (a legitimate "unknown quantity", not junk).
+    if (jobData.productCode) {
+      await prisma.erpJobOrder.upsert({
+        where: { jobNumber: jobData.jobNumber },
+        create: {
+          jobNumber: jobData.jobNumber,
+          productCode: jobData.productCode,
+          quantityOrdered: jobData.plannedQty ?? 0,
+        },
+        update: {},
+      });
+    }
   } else if (jobData.event === "UPDATE") {
     await prisma.productionJob.update({
       where: { jobNumber: jobData.jobNumber },

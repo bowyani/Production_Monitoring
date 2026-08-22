@@ -183,7 +183,7 @@
   <text x="1390" y="476" text-anchor="middle" font-size="9" font-style="italic" fill="#EF6C00">(mock ERP master data)</text>
 
   <rect x="1266" y="503" width="248" height="84" rx="6" fill="#FFFDE7" stroke="#EF6C00" stroke-width="1.2"/>
-  <text x="1390" y="523" text-anchor="middle" font-size="11" font-weight="bold" fill="#E65100">Chief Operator View — ใหม่</text>
+  <text x="1390" y="523" text-anchor="middle" font-size="11" font-weight="bold" fill="#E65100">Machine Management View — ใหม่</text>
   <text x="1390" y="540" text-anchor="middle" font-size="9.5" fill="#E65100">Preventive Maintenance planning</text>
   <text x="1390" y="555" text-anchor="middle" font-size="9.5" fill="#E65100">(run-hours since PM เทียบ interval)</text>
   <text x="1390" y="570" text-anchor="middle" font-size="9.5" fill="#E65100">Downtime breakdown ตามสาเหตุ/รุ่นเครื่อง</text>

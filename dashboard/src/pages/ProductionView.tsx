@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type Machine, type ProductionJob, type ErpJobOrder } from "../lib/api";
-import { useLiveSocket } from "../lib/useLiveSocket";
 import { usePagination } from "../lib/usePagination";
 import Pagination from "../components/Pagination";
 import { VerticalGroupedStackedBarChart } from "../components/Bars";
@@ -46,20 +45,20 @@ export default function ProductionView() {
     return map;
   }, [machines]);
 
-  // Production Volume by Model chart — its own time window, independent of
-  // the Job Lookup filters below.
-  const [chartFrom, setChartFrom] = useState(() => toLocalInputValue(new Date(Date.now() - 24 * 60 * 60 * 1000)));
-  const [chartTo, setChartTo] = useState(() => toLocalInputValue(new Date()));
+  // Shared time window for both "Production Volume by Model" and "Job
+  // Lookup" below — one From/To controls what shows up in either, instead of
+  // each section quietly answering a different question about "when".
+  const [from, setFrom] = useState(() => toLocalInputValue(new Date(Date.now() - 24 * 60 * 60 * 1000)));
+  const [to, setTo] = useState(() => toLocalInputValue(new Date()));
   const [chartJobs, setChartJobs] = useState<ProductionJob[]>([]);
   const [chartError, setChartError] = useState<string | null>(null);
 
-  function loadChart(e?: React.FormEvent) {
-    e?.preventDefault();
+  function loadChart() {
     setChartError(null);
     api
       .searchJobs({
-        from: new Date(chartFrom).toISOString(),
-        to: new Date(chartTo).toISOString(),
+        from: new Date(from).toISOString(),
+        to: new Date(to).toISOString(),
         limit: "1000",
       })
       .then(setChartJobs)
@@ -98,6 +97,8 @@ export default function ProductionView() {
         q: jobQuery.trim() || undefined,
         productCode: filterProduct.trim() || undefined,
         status: filterStatus || undefined,
+        from: new Date(from).toISOString(),
+        to: new Date(to).toISOString(),
         sort: sortField,
         dir: sortDir,
       })
@@ -105,25 +106,28 @@ export default function ProductionView() {
       .catch((err) => setJobError(err instanceof Error ? err.message : "search failed"));
   }
 
-  useEffect(() => {
-    refreshJobs();
+  function loadAll(e?: React.FormEvent) {
+    e?.preventDefault();
     loadChart();
+    refreshJobs();
+  }
+
+  useEffect(() => {
+    loadAll();
     api.getMachines().then(setMachines).catch(console.error);
     api.getErpJobOrders().then(setJobOrders).catch(console.error);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Re-run search whenever a filter/sort control changes.
+  // Re-run search whenever a filter/sort control changes. Deliberately no
+  // live-socket auto-refresh here — From/To is a real query boundary shared
+  // with the chart above, and rows quietly changing underneath it while it
+  // still reads e.g. "last 24h" is more confusing than useful. Explicit
+  // Load/Search matches how the chart above already behaves.
   useEffect(() => {
     refreshJobs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterMachineId, filterStatus, filterProduct, sortField, sortDir]);
-
-  useLiveSocket((msg) => {
-    if (msg.event === "job") {
-      refreshJobs();
-    }
-  });
 
   function searchJob(e: React.FormEvent) {
     e.preventDefault();
@@ -163,12 +167,15 @@ export default function ProductionView() {
 
       <section>
         <h2>Production Volume by Model</h2>
-        <form onSubmit={loadChart} className="toolbar">
+        <p style={{ fontSize: 12, color: "#57606a" }}>
+          This From/To also scopes Job Lookup below — one time window for both.
+        </p>
+        <form onSubmit={loadAll} className="toolbar">
           <label>
-            From <input type="datetime-local" value={chartFrom} onChange={(e) => setChartFrom(e.target.value)} />
+            From <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
           </label>
           <label>
-            To <input type="datetime-local" value={chartTo} onChange={(e) => setChartTo(e.target.value)} />
+            To <input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} />
           </label>
           <button type="submit">Load</button>
         </form>
@@ -262,12 +269,11 @@ export default function ProductionView() {
                   <th>Startup Scrap</th>
                   <th>Mold</th>
                   <th>Recipe</th>
-                  <th>Ordered vs Produced</th>
+                  <th>Ordered vs Good</th>
                 </tr>
               </thead>
               <tbody>
                 {jobsPage.pageItems.map((j) => {
-                  const produced = j.goodQty + j.rejectQty + j.startupScrapQty;
                   const ordered = orderedQtyByJobNumber.get(j.jobNumber);
                   return (
                     <tr key={j.jobNumber} onClick={() => openJob(j.jobNumber)} style={{ cursor: "pointer" }}>
@@ -287,10 +293,10 @@ export default function ProductionView() {
                       <td
                         style={{
                           color:
-                            ordered != null && j.status === "DONE" && produced < ordered ? "#cf222e" : undefined,
+                            ordered != null && j.status === "DONE" && j.goodQty < ordered ? "#cf222e" : undefined,
                         }}
                       >
-                        {ordered != null ? `${ordered} / ${produced}` : "—"}
+                        {ordered != null ? `${ordered} / ${j.goodQty}` : "—"}
                       </td>
                     </tr>
                   );
