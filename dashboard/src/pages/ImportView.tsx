@@ -4,8 +4,8 @@ import { usePagination } from "../lib/usePagination";
 import Pagination from "../components/Pagination";
 
 const TEMPLATE_CSV =
-  "jobNumber,productCode,moldId,recipeId,startTime,endTime,goodQty,rejectQty,startupScrapQty,status\n" +
-  "JOB-LEGACY-001,PVC-90-ELBOW,MOLD-3,RECIPE-2,2026-08-19T08:00:00Z,2026-08-19T16:00:00Z,410,12,3,DONE\n";
+  "jobNumber,productCode,moldId,recipeId,startTime,endTime,goodQty,rejectQty,startupScrapQty,quantityOrdered,status\n" +
+  "JOB-LEGACY-001,PVC-90-ELBOW,MOLD-3,RECIPE-2,2026-08-19T08:00:00Z,2026-08-19T16:00:00Z,410,12,3,425,DONE\n";
 
 function downloadTemplate() {
   const blob = new Blob([TEMPLATE_CSV], { type: "text/csv;charset=utf-8;" });

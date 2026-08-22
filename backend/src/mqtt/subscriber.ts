@@ -28,9 +28,20 @@ export function getSimulatorParams(machineId: string) {
 
 // Fire-and-forget: publishes retained so a simulator that reconnects (or
 // hasn't started yet) still picks up the desired tuning without a resend.
+//
+// MQTT retain keeps only the single most recent publish per topic — so a
+// bare partial patch published here would BECOME the entire retained
+// message, and a simulator that restarts afterward would apply just that
+// patch onto its own DEFAULT_TUNING, silently losing every other
+// previously-configured field. Merging onto the last-known full state
+// (cached from the simulator's own retained control/state echo) before
+// publishing keeps the retained message a complete snapshot regardless of
+// how small the incoming patch is.
 export function publishSimulatorControl(machineId: string, patch: Record<string, unknown>) {
   if (!mqttClient) return false;
-  mqttClient.publish(`factory/${machineId}/control`, JSON.stringify(patch), { retain: true });
+  const cached = simulatorParamsCache.get(machineId);
+  const merged = { ...(cached?.tuning ?? {}), ...patch };
+  mqttClient.publish(`factory/${machineId}/control`, JSON.stringify(merged), { retain: true });
   return true;
 }
 
@@ -141,6 +152,20 @@ async function handleJob(payload: ReturnType<typeof jobSchema.parse>) {
         status: "RUNNING",
       },
       update: { status: "RUNNING" },
+    });
+
+    // Auto-seed the mock "order obtained from ERP" (see schema.prisma
+    // ErpJobOrder) from whatever the simulator just decided to produce, so
+    // Job Orders in ERP stays populated without anyone hand-keying it. Best
+    // effort — a job without a productCode/plannedQty still gets a row.
+    await prisma.erpJobOrder.upsert({
+      where: { jobNumber: jobData.jobNumber },
+      create: {
+        jobNumber: jobData.jobNumber,
+        productCode: jobData.productCode ?? "UNKNOWN",
+        quantityOrdered: jobData.plannedQty ?? 0,
+      },
+      update: {},
     });
   } else if (jobData.event === "UPDATE") {
     await prisma.productionJob.update({

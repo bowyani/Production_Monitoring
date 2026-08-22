@@ -148,6 +148,24 @@ model ProductSku {
   @@map("product_skus")
 }
 
+// Mock ERP "order obtained from ERP" data — deliberately decoupled from
+// ProductionJob (no FK, just a shared jobNumber/productCode by convention,
+// same "logical join, not a real one" pattern as ProductSku above). Backend
+// auto-upserts a row here whenever a production job starts (see
+// mqtt/subscriber.ts handleJob), so this stays populated without anyone
+// hand-keying it; it's also directly editable in ERP like SKU Pricing.
+// Reconciling this against actual good/reject output is a manual step for
+// later, not automatic — see README "สมมติฐานและข้อจำกัด".
+model ErpJobOrder {
+  jobNumber       String   @id @map("job_number")
+  productCode     String   @map("product_code")
+  quantityOrdered Int      @map("quantity_ordered")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("erp_job_orders")
+}
+
 // Programmatic log of who changed what in Admin (machine config, activation,
 // maintenance, CSV import) — answers Direction.md §4.2 "มี Log สำหรับตรวจสอบ
 // การทำงานเบื้องต้น". No auth yet, so `actor` is a free-text label; once auth

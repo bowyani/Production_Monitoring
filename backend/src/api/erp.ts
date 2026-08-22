@@ -82,6 +82,7 @@ erpRouter.put("/erp/machine-assets/:assetId", async (req, res) => {
     update: { ...parsed.data },
   });
   await logAudit("erp-ui", "MACHINE_ASSET_SET", "erp_machine_asset", assetId, parsed.data);
+
   res.json(asset);
 });
 
@@ -103,26 +104,43 @@ erpRouter.delete("/erp/machine-assets/:assetId", async (req, res) => {
   res.status(204).end();
 });
 
-erpRouter.get("/erp/job-orders", async (req, res) => {
-  const { from, to, machineId, productCode, limit } = req.query;
-  const jobs = await prisma.productionJob.findMany({
-    where: {
-      machineId: machineId ? String(machineId) : undefined,
-      productCode: productCode ? String(productCode) : undefined,
-      startTime: {
-        gte: from ? new Date(String(from)) : undefined,
-        lte: to ? new Date(String(to)) : undefined,
-      },
-    },
-    orderBy: { startTime: "desc" },
-    take: limit ? Number(limit) : 100,
-    include: { machine: { include: { asset: true } } },
+// Mock "order obtained from ERP" data (see schema.prisma ErpJobOrder) — Job
+// Number/SKU/Quantity only, deliberately not the same thing as a
+// ProductionJob. Backend auto-upserts a row here whenever a production job
+// starts (see mqtt/subscriber.ts handleJob), so this list stays populated
+// without anyone hand-keying it; it's also directly editable below like SKU
+// Pricing. Comparing this against actual good/reject output is a read-time
+// join by jobNumber done in the Production page, not a DB relation.
+const upsertJobOrderSchema = z.object({
+  productCode: z.string().min(1),
+  quantityOrdered: z.number().int().nonnegative(),
+});
+
+erpRouter.get("/erp/job-orders", async (_req, res) => {
+  const orders = await prisma.erpJobOrder.findMany({ orderBy: { createdAt: "desc" } });
+  res.json(orders);
+});
+
+erpRouter.put("/erp/job-orders/:jobNumber", async (req, res) => {
+  const parsed = upsertJobOrderSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const jobNumber = req.params.jobNumber;
+  const order = await prisma.erpJobOrder.upsert({
+    where: { jobNumber },
+    create: { jobNumber, ...parsed.data },
+    update: { ...parsed.data },
   });
+  await logAudit("erp-ui", "JOB_ORDER_SET", "erp_job_order", jobNumber, parsed.data);
+  res.json(order);
+});
 
-  const skus = await prisma.productSku.findMany();
-  const skuByCode = new Map(skus.map((s) => [s.productCode, s]));
-
-  res.json(jobs.map((j) => priceJobOrder(j, j.machine.asset, skuByCode.get(j.productCode))));
+erpRouter.delete("/erp/job-orders/:jobNumber", async (req, res) => {
+  await prisma.erpJobOrder.delete({ where: { jobNumber: req.params.jobNumber } }).catch(() => null);
+  await logAudit("erp-ui", "JOB_ORDER_REMOVED", "erp_job_order", req.params.jobNumber, null);
+  res.status(204).end();
 });
 
 // Revenue/cost/margin by SKU and by machine over the window — the "where's

@@ -153,14 +153,15 @@ export default function KpiView() {
                 </div>
               </div>
               <div style={card}>
-                <div style={sectionTitle}>Material + Labor Cost</div>
+                <div style={sectionTitle}>Material Cost</div>
                 <div style={bigValue}>
-                  {thb(
-                    financials
-                      ? (financials.totals.materialCostThb ?? 0) +
-                          (financials.totals.laborCostThb ?? 0)
-                      : null,
-                  )}
+                  {thb(financials?.totals.materialCostThb ?? null)}
+                </div>
+              </div>
+              <div style={card}>
+                <div style={sectionTitle}>Labor Cost</div>
+                <div style={bigValue}>
+                  {thb(financials?.totals.laborCostThb ?? null)}
                 </div>
               </div>
               <div
@@ -183,6 +184,12 @@ export default function KpiView() {
                   }}
                 >
                   {thb(financials?.totals.marginThb ?? null)}
+                </div>
+              </div>
+              <div style={card}>
+                <div style={sectionTitle}>Margin / Runtime Hour</div>
+                <div style={bigValue}>
+                  {thb(financials?.totals.marginPerHourThb ?? null, 1)}
                 </div>
               </div>
               <div style={card}>
@@ -269,6 +276,60 @@ export default function KpiView() {
             </section>
           )}
 
+          {financials && (
+            <section
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 24,
+              }}
+            >
+              <div>
+                <h2>Margin by Machine (฿/hr, worst first)</h2>
+                <DivergingBarChart
+                  data={financials.byMachine.map((r) => ({
+                    label: r.key,
+                    value: r.marginPerHourThb ?? 0,
+                    sublabel: `${r.jobCount} job(s)`,
+                    display: r.marginPerHourThb == null ? "—" : undefined,
+                  }))}
+                  formatValue={(v) => thb(v, 1)}
+                />
+              </div>
+              <div>
+                <h2>Revenue by SKU</h2>
+                <HBarChart
+                  data={[...financials.bySku].reverse().map((r) => ({
+                    label: r.key,
+                    value: r.revenueThb ?? 0,
+                    display: r.revenueThb == null ? "—" : undefined,
+                  }))}
+                  color="#0969da"
+                  formatValue={(v) => thb(v)}
+                />
+              </div>
+            </section>
+          )}
+
+          {financials && (
+            <section>
+              <h2>Reject material loss by SKU</h2>
+              <p style={{ fontSize: 12, color: "#57606a" }}>
+                Material consumed by rejected/scrap units that earned no revenue — cost hiding inside the
+                reject rate.
+              </p>
+              <HBarChart
+                data={[...financials.bySku].reverse().map((r) => ({
+                  label: r.key,
+                  value: r.rejectMaterialLossThb ?? 0,
+                  display: r.rejectMaterialLossThb == null ? "—" : undefined,
+                }))}
+                color="#cf222e"
+                formatValue={(v) => thb(v)}
+              />
+            </section>
+          )}
+
           <section>
             <h2>Per-Machine</h2>
             <div className="table-card">
@@ -314,10 +375,10 @@ export default function KpiView() {
             </div>
             <p style={{ fontSize: 13, color: "#57606a", maxWidth: 700 }}>
               Performance/OEE show "—" for machines without a configured Target
-              Cycle Time (set it in Admin). QC hold rate isn't shown — there's
+              Cycle Time (set it in ERP). QC hold rate isn't shown — there's
               no "QC hold" concept in the current data model. Reject rate,
-              runtime, cycle time, and energy detail moved to{" "}
-              <strong>Chief Operator</strong> — this page stays focused on money
+              runtime, cycle time, and energy detail live on{" "}
+              <strong>Performance</strong> — this page stays focused on money
               and overall equipment effectiveness.
             </p>
           </section>
@@ -327,9 +388,9 @@ export default function KpiView() {
             <p style={{ fontSize: 13, color: "#57606a", maxWidth: 700 }}>
               Standard OEE decomposition (ISO 22400-2), computed per machine
               over the selected From/To window, then rolled up. Financial
-              figures come from the mock ERP price book (Admin &gt; ERP):
+              figures come from the mock ERP price book:
               revenue = good qty × SKU price, cost = material (all produced
-              units) + labor (runtime × $/hr from Admin).
+              units) + labor (runtime × $/hr from ERP).
             </p>
             <ul
               style={{
@@ -348,7 +409,7 @@ export default function KpiView() {
               <li>
                 <strong>Performance</strong> = Target Cycle Time ÷ actual
                 average Cycle Time while running, capped at 100%. Requires
-                Target Cycle Time to be set in Admin — otherwise "—", never a
+                Target Cycle Time to be set in ERP — otherwise "—", never a
                 guessed default.
               </li>
               <li>
@@ -364,7 +425,7 @@ export default function KpiView() {
               </li>
               <li>
                 <strong>Est. Energy / Labor Cost</strong> are <em>estimates</em>
-                : rated power (kW) and labor cost ($/hr) from Admin config ×
+                : rated power (kW) and labor cost ($/hr) from ERP config ×
                 measured runtime hours. Not a metered reading — treat as
                 directional, not billing-grade.
               </li>

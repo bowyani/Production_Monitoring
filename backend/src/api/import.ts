@@ -22,7 +22,7 @@ const REQUIRED_COLUMNS = [
   "goodQty",
   "rejectQty",
 ] as const;
-const OPTIONAL_COLUMNS = ["moldId", "recipeId", "endTime", "startupScrapQty", "status"] as const;
+const OPTIONAL_COLUMNS = ["moldId", "recipeId", "endTime", "startupScrapQty", "quantityOrdered", "status"] as const;
 
 // Deliberately not using a CSV library: the expected input is simple,
 // comma-separated, unquoted (no embedded commas/newlines in fields). Good
@@ -46,6 +46,10 @@ function parseNonNegativeInt(value: string): number | null {
 
 type ValidRow = {
   jobNumber: string;
+  // Not a ProductionJob column — used only to seed a matching ErpJobOrder
+  // (see the write loop below) so imported jobs get an order to compare
+  // against too, same as MQTT-sourced jobs do (see subscriber.ts handleJob).
+  quantityOrdered: number | null;
   data: {
     machineId: string;
     productCode: string;
@@ -141,6 +145,16 @@ importRouter.post("/admin/import/jobs", async (req, res) => {
       }
     }
 
+    let quantityOrdered: number | null = null;
+    if (record.quantityOrdered) {
+      const v = parseNonNegativeInt(record.quantityOrdered);
+      if (v === null) {
+        rowErrors.push(`invalid quantityOrdered "${record.quantityOrdered}" (must be a whole number ≥ 0)`);
+      } else {
+        quantityOrdered = v;
+      }
+    }
+
     if (rowErrors.length > 0) {
       failed.push({ row: rowNum, error: rowErrors.join("; ") });
       continue;
@@ -148,6 +162,7 @@ importRouter.post("/admin/import/jobs", async (req, res) => {
 
     validRows.push({
       jobNumber: record.jobNumber,
+      quantityOrdered,
       data: {
         machineId,
         productCode: record.productCode,
@@ -179,6 +194,21 @@ importRouter.post("/admin/import/jobs", async (req, res) => {
     });
     if (existing) updated++;
     else created++;
+
+    // Mirror subscriber.ts's MQTT auto-seed so imported jobs get an ERP Job
+    // Order to compare against too — falls back to the produced total (no
+    // shortfall shown) when the CSV doesn't supply one. update: {} so this
+    // never clobbers an existing order (a manual ERP edit or an earlier
+    // import), same first-write-wins rule as the MQTT path.
+    await prisma.erpJobOrder.upsert({
+      where: { jobNumber: row.jobNumber },
+      create: {
+        jobNumber: row.jobNumber,
+        productCode: row.data.productCode,
+        quantityOrdered: row.quantityOrdered ?? row.data.goodQty + row.data.rejectQty + row.data.startupScrapQty,
+      },
+      update: {},
+    });
   }
 
   // Dashboard's MANUAL-machine table shows this as "Last imported" in place

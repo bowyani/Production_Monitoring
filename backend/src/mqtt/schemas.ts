@@ -33,6 +33,9 @@ export const jobSchema = z.object({
     goodQty: z.number().int().optional(),
     rejectQty: z.number().int().optional(),
     startupScrapQty: z.number().int().optional(),
+    // Shots the simulator intends to make this run — set on START only, used
+    // to auto-seed a matching ErpJobOrder (see subscriber.ts handleJob).
+    plannedQty: z.number().int().optional(),
   }),
 });
 export type JobPayload = z.infer<typeof jobSchema>;

@@ -22,6 +22,10 @@ type Tuning = {
   pressureMaxBar: number;
   temperatureMinC: number;
   temperatureMaxC: number;
+  // Shots after a mold/job change treated as purge scrap, not reject. Mirrors
+  // ErpMachineAsset.startupScrapQty — ERP pushes changes here live over this
+  // same control channel (see backend/src/api/erp.ts, admin.ts).
+  startupScrapQty: number;
 };
 
 const DEFAULT_TUNING: Tuning = {
@@ -35,6 +39,7 @@ const DEFAULT_TUNING: Tuning = {
   pressureMaxBar: 950,
   temperatureMinC: 195,
   temperatureMaxC: 245,
+  startupScrapQty: 3,
 };
 
 let tuning: Tuning = { ...DEFAULT_TUNING };
@@ -136,6 +141,43 @@ function publishJSON(client: MqttClient, topic: string, payload: unknown) {
   client.publish(topic, JSON.stringify(payload));
 }
 
+const MOCK_MODELS = ["Haitian MA1200", "Haitian MA2000", "ENGEL e-motion 310", "Arburg Allrounder 470 A", "Chen Hsong JM138-Ai"];
+const MOCK_VENDORS = ["Thai Plastic Machinery Co.", "Asia Injection Systems Ltd.", "Siam Molding Equipment"];
+const MOCK_LOCATIONS = ["Building A", "Building B", "Building C"];
+
+function hashString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+// Deterministic per-machine mock ERP specs — same MACHINE_ID always yields
+// the same values, so re-bootstrapping a known machine never shuffles its
+// "master data" around. Only used the very first time an asset is created
+// (see registerMachine) so it doesn't fight an admin's later ERP edits.
+//
+// Each field hashes MACHINE_ID salted with its own field name rather than
+// sharing one hash across fields — two fields whose pick-lists happen to be
+// the same length (e.g. MOCK_VENDORS/MOCK_LOCATIONS, both 3 entries) would
+// otherwise always land on the same index and vary in lock-step for every
+// machine (every "Building A" machine getting the same vendor, etc.).
+function buildMockAssetDefaults(machineId: string) {
+  const h = (field: string) => hashString(`${machineId}:${field}`);
+  const purchaseDate = new Date();
+  purchaseDate.setFullYear(purchaseDate.getFullYear() - (1 + (h("purchaseYear") % 5)));
+  return {
+    machineModel: MOCK_MODELS[h("model") % MOCK_MODELS.length],
+    ratedPowerKw: 30 + (h("ratedPower") % 40),
+    laborCostPerHour: 150 + (h("laborCost") % 150),
+    targetCycleTimeSec: 10 + (h("cycleTime") % 6),
+    maintenanceIntervalHours: 400 + (h("maintenance") % 5) * 100,
+    vendorName: MOCK_VENDORS[h("vendor") % MOCK_VENDORS.length],
+    purchaseDate: purchaseDate.toISOString().slice(0, 10),
+    location: MOCK_LOCATIONS[h("location") % MOCK_LOCATIONS.length],
+    manufacturerPhone: `02-${String(100 + (h("phone1") % 900)).padStart(3, "0")}-${String(1000 + (h("phone2") % 9000)).padStart(4, "0")}`,
+  };
+}
+
 // Registers via the Admin API (the legitimate registration channel — see
 // README.md, "Design Rationale" section) so `docker compose up` produces a working demo
 // without a manual Admin UI step first. The MQTT ingestion path still
@@ -149,10 +191,26 @@ function publishJSON(client: MqttClient, topic: string, payload: unknown) {
 async function registerMachine() {
   for (let attempt = 1; attempt <= 15; attempt++) {
     try {
+      const existingRes = await fetch(`${BACKEND_API_URL}/erp/machine-assets`);
+      if (!existingRes.ok) {
+        console.warn(`[${MACHINE_ID}] ERP asset lookup attempt ${attempt} failed: ${existingRes.status}`);
+        await new Promise((r) => setTimeout(r, 2000));
+        continue;
+      }
+      const existingAssets = (await existingRes.json()) as { assetId: string }[];
+      const alreadyExists = existingAssets.some((a) => a.assetId === MACHINE_ID);
+
+      // First-ever boot: seed realistic-looking specs so the demo isn't full
+      // of blank machine assets. Once the asset exists, touch only
+      // machineName — an admin may have hand-edited the rest since.
+      const assetBody = alreadyExists
+        ? { machineName: MACHINE_NAME }
+        : { machineName: MACHINE_NAME, ...buildMockAssetDefaults(MACHINE_ID) };
+
       const assetRes = await fetch(`${BACKEND_API_URL}/erp/machine-assets/${encodeURIComponent(MACHINE_ID)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ machineName: MACHINE_NAME }),
+        body: JSON.stringify(assetBody),
       });
       if (!assetRes.ok) {
         console.warn(`[${MACHINE_ID}] ERP asset upsert attempt ${attempt} failed: ${assetRes.status}`);
@@ -188,13 +246,14 @@ function startJob() {
   state.rejectQty = 0;
   // First few shots after a mold/job change are purge scrap, not reject —
   // see README.md, "Gap Analysis" §1.2.
-  state.startupScrapQty = 3;
+  state.startupScrapQty = tuning.startupScrapQty;
   state.jobShotsRemaining = 30 + Math.floor(Math.random() * 40);
   state.status = "RUN";
   return {
     productCode: PRODUCT_CODES[Math.floor(Math.random() * PRODUCT_CODES.length)],
     moldId: `MOLD-${1 + Math.floor(Math.random() * 5)}`,
     recipeId: `RECIPE-${1 + Math.floor(Math.random() * 5)}`,
+    plannedQty: state.jobShotsRemaining,
   };
 }
 

@@ -7,7 +7,11 @@ import { getSimulatorParams, publishSimulatorControl } from "../mqtt/subscriber"
 export const simulatorControlRouter = Router();
 
 // Mirrors simulator/src/index.ts's Tuning type — every field optional since
-// the dashboard only sends the ones the user actually changed.
+// callers only send the ones actually changing. This is the one validated,
+// audited path onto the simulator's MQTT control channel — every other route
+// that wants to push a live tuning change (e.g. ERP's Startup Scrap field,
+// Admin's container-activation sync) must go through pushSimulatorTuning
+// below rather than calling publishSimulatorControl directly.
 const tuningPatchSchema = z
   .object({
     tickMs: z.number().min(200).max(10000),
@@ -20,8 +24,39 @@ const tuningPatchSchema = z
     pressureMaxBar: z.number().min(0).max(3000),
     temperatureMinC: z.number().min(0).max(500),
     temperatureMaxC: z.number().min(0).max(500),
+    startupScrapQty: z.number().int().min(0).max(1000),
   })
   .partial();
+
+type PushTuningResult =
+  | { ok: true; applied: Record<string, number> }
+  | { ok: false; status: number; body: { error: unknown } };
+
+// Validates, publishes (retained, merged onto the simulator's last-known
+// state — see publishSimulatorControl), and audit-logs a tuning patch. The
+// single entry point onto the control channel so every caller gets the same
+// schema validation and the same SIMULATOR_PARAMS_UPDATED audit trail,
+// whether the change came from a human editing Simulator Tuning directly or
+// from another route syncing an ERP-configured value.
+export async function pushSimulatorTuning(
+  machineId: string,
+  patch: Record<string, unknown>,
+  actor: string
+): Promise<PushTuningResult> {
+  const parsed = tuningPatchSchema.safeParse(patch);
+  if (!parsed.success) {
+    return { ok: false, status: 400, body: { error: parsed.error.flatten() } };
+  }
+  if (Object.keys(parsed.data).length === 0) {
+    return { ok: false, status: 400, body: { error: "no fields to update" } };
+  }
+  const published = publishSimulatorControl(machineId, parsed.data);
+  if (!published) {
+    return { ok: false, status: 503, body: { error: "mqtt broker not connected" } };
+  }
+  await logAudit(actor, "SIMULATOR_PARAMS_UPDATED", "machine", machineId, parsed.data);
+  return { ok: true, applied: parsed.data };
+}
 
 type SimulatedMachineCheck =
   | { ok: true }
@@ -47,26 +82,15 @@ simulatorControlRouter.get("/admin/machines/:id/simulator/params", async (req, r
 });
 
 simulatorControlRouter.patch("/admin/machines/:id/simulator/params", async (req, res) => {
-  const parsed = tuningPatchSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.flatten() });
-    return;
-  }
-  if (Object.keys(parsed.data).length === 0) {
-    res.status(400).json({ error: "no fields to update" });
-    return;
-  }
   const check = await requireSimulatedMachine(req.params.id);
   if (!check.ok) {
     res.status(check.status).json(check.body);
     return;
   }
-
-  const published = publishSimulatorControl(req.params.id, parsed.data);
-  if (!published) {
-    res.status(503).json({ error: "mqtt broker not connected" });
+  const result = await pushSimulatorTuning(req.params.id, req.body, "admin-ui");
+  if (!result.ok) {
+    res.status(result.status).json(result.body);
     return;
   }
-  await logAudit("admin-ui", "SIMULATOR_PARAMS_UPDATED", "machine", req.params.id, parsed.data);
-  res.json({ ok: true, applied: parsed.data });
+  res.json({ ok: true, applied: result.applied });
 });

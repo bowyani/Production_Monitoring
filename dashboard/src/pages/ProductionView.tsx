@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type Machine, type ProductionJob } from "../lib/api";
+import { api, type Machine, type ProductionJob, type ErpJobOrder } from "../lib/api";
 import { useLiveSocket } from "../lib/useLiveSocket";
 import { usePagination } from "../lib/usePagination";
 import Pagination from "../components/Pagination";
@@ -33,6 +33,12 @@ function formatDuration(startIso: string, endIso: string | null) {
 
 export default function ProductionView() {
   const [machines, setMachines] = useState<Machine[]>([]);
+  const [jobOrders, setJobOrders] = useState<ErpJobOrder[]>([]);
+  const orderedQtyByJobNumber = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const o of jobOrders) map.set(o.jobNumber, o.quantityOrdered);
+    return map;
+  }, [jobOrders]);
 
   const modelByMachineId = useMemo(() => {
     const map = new Map<string, string>();
@@ -103,6 +109,7 @@ export default function ProductionView() {
     refreshJobs();
     loadChart();
     api.getMachines().then(setMachines).catch(console.error);
+    api.getErpJobOrders().then(setJobOrders).catch(console.error);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -253,27 +260,44 @@ export default function ProductionView() {
                     Reject{sortArrow("rejectQty")}
                   </th>
                   <th>Startup Scrap</th>
+                  <th>Mold</th>
+                  <th>Recipe</th>
+                  <th>Ordered vs Produced</th>
                 </tr>
               </thead>
               <tbody>
-                {jobsPage.pageItems.map((j) => (
-                  <tr key={j.jobNumber} onClick={() => openJob(j.jobNumber)} style={{ cursor: "pointer" }}>
-                    <td>{j.jobNumber}</td>
-                    <td>{j.machineId}</td>
-                    <td>{modelByMachineId.get(j.machineId) ?? "—"}</td>
-                    <td>{j.productCode}</td>
-                    <td>{new Date(j.startTime).toLocaleString()}</td>
-                    <td>{j.endTime ? new Date(j.endTime).toLocaleString() : "—"}</td>
-                    <td>{formatDuration(j.startTime, j.endTime)}</td>
-                    <td>{j.status}</td>
-                    <td>{j.goodQty}</td>
-                    <td>{j.rejectQty}</td>
-                    <td>{j.startupScrapQty}</td>
-                  </tr>
-                ))}
+                {jobsPage.pageItems.map((j) => {
+                  const produced = j.goodQty + j.rejectQty + j.startupScrapQty;
+                  const ordered = orderedQtyByJobNumber.get(j.jobNumber);
+                  return (
+                    <tr key={j.jobNumber} onClick={() => openJob(j.jobNumber)} style={{ cursor: "pointer" }}>
+                      <td>{j.jobNumber}</td>
+                      <td>{j.machineId}</td>
+                      <td>{modelByMachineId.get(j.machineId) ?? "—"}</td>
+                      <td>{j.productCode}</td>
+                      <td>{new Date(j.startTime).toLocaleString()}</td>
+                      <td>{j.endTime ? new Date(j.endTime).toLocaleString() : "—"}</td>
+                      <td>{formatDuration(j.startTime, j.endTime)}</td>
+                      <td>{j.status}</td>
+                      <td>{j.goodQty}</td>
+                      <td>{j.rejectQty}</td>
+                      <td>{j.startupScrapQty}</td>
+                      <td>{j.moldId ?? "—"}</td>
+                      <td>{j.recipeId ?? "—"}</td>
+                      <td
+                        style={{
+                          color:
+                            ordered != null && j.status === "DONE" && produced < ordered ? "#cf222e" : undefined,
+                        }}
+                      >
+                        {ordered != null ? `${ordered} / ${produced}` : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
                 {jobResults.length === 0 && (
                   <tr className="row-empty">
-                    <td colSpan={11}>No jobs found.</td>
+                    <td colSpan={14}>No jobs found.</td>
                   </tr>
                 )}
               </tbody>

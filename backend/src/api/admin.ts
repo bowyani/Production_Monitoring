@@ -108,6 +108,12 @@ adminRouter.patch("/admin/machines/:id", async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
+  const exists = await prisma.machine.findUnique({ where: { machineId: req.params.id } });
+  if (!exists) {
+    res.status(404).json({ error: `machine ${req.params.id} not found` });
+    return;
+  }
+
   const data: Prisma.MachineUpdateInput = { ...parsed.data };
   // Deactivating stops MQTT ingestion for this machine (see subscriber.ts), so
   // its status would otherwise stay frozen at whatever it last was (e.g. RUN).

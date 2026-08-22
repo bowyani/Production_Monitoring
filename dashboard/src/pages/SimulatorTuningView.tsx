@@ -46,6 +46,15 @@ const RELIABILITY_FIELDS: FieldDef[] = [
     unit: "%",
     toDisplay: (v) => (v * 100).toFixed(1),
   },
+  {
+    key: "startupScrapQty",
+    label: "Startup scrap",
+    hint: "Shots after a mold/job change counted as purge scrap rather than reject (GAP_ANALYSIS §1.2).",
+    min: 0,
+    max: 20,
+    step: 1,
+    unit: " shots",
+  },
 ];
 
 const RANGE_FIELDS: { pair: [FieldDef, FieldDef]; title: string }[] = [

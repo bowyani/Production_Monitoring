@@ -43,6 +43,18 @@ export type ErpMachineAsset = {
   registered: boolean;
 };
 
+// Mock "order obtained from ERP" (schema.prisma ErpJobOrder) — Job
+// Number/SKU/Quantity only, deliberately decoupled from the real production
+// numbers on ProductionJob. Auto-populated by the backend as jobs start
+// (see mqtt/subscriber.ts), but also directly editable here like SKU Pricing.
+export type ErpJobOrder = {
+  jobNumber: string;
+  productCode: string;
+  quantityOrdered: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type Alarm = {
   id: string;
   machineId: string;
@@ -131,26 +143,6 @@ export type ProductSku = {
   materialCostPerUnitThb: number | null;
   createdAt: string;
   updatedAt: string;
-};
-
-export type JobOrder = {
-  jobNumber: string;
-  machineId: string;
-  machineName: string;
-  productCode: string;
-  status: string;
-  startTime: string;
-  endTime: string | null;
-  goodQty: number;
-  rejectQty: number;
-  startupScrapQty: number;
-  runtimeHours: number;
-  unitPriceThb: number | null;
-  materialCostPerUnitThb: number | null;
-  revenueThb: number | null;
-  materialCostThb: number | null;
-  laborCostThb: number | null;
-  marginThb: number | null;
 };
 
 export type ErpRollup = {
@@ -256,6 +248,9 @@ export type SimulatorTuning = {
   pressureMaxBar: number;
   temperatureMinC: number;
   temperatureMaxC: number;
+  // Shots after a mold/job change treated as purge scrap, not reject — lives
+  // here (not on ErpMachineAsset) since the simulator is the only consumer.
+  startupScrapQty: number;
 };
 
 export const SIMULATOR_DEFAULT_TUNING: SimulatorTuning = {
@@ -269,6 +264,7 @@ export const SIMULATOR_DEFAULT_TUNING: SimulatorTuning = {
   pressureMaxBar: 950,
   temperatureMinC: 195,
   temperatureMaxC: 245,
+  startupScrapQty: 3,
 };
 
 export type ImportResult = {
@@ -368,8 +364,14 @@ export const api = {
     }),
   deleteSku: (productCode: string) =>
     fetch(`${API_BASE}/erp/skus/${encodeURIComponent(productCode)}`, { method: "DELETE" }),
-  getJobOrders: (params: { from?: string; to?: string; machineId?: string; productCode?: string; limit?: string }) =>
-    request<JobOrder[]>(`/erp/job-orders${qs(params)}`),
+  getErpJobOrders: () => request<ErpJobOrder[]>("/erp/job-orders"),
+  setErpJobOrder: (jobNumber: string, data: { productCode: string; quantityOrdered: number }) =>
+    request<ErpJobOrder>(`/erp/job-orders/${encodeURIComponent(jobNumber)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteErpJobOrder: (jobNumber: string) =>
+    fetch(`${API_BASE}/erp/job-orders/${encodeURIComponent(jobNumber)}`, { method: "DELETE" }),
   getErpSummary: (from?: string, to?: string) => request<ErpSummary>(`/erp/summary${qs({ from, to })}`),
   getMaintenanceOverview: (from?: string, to?: string) =>
     request<MaintenanceOverview>(`/maintenance/overview${qs({ from, to })}`),

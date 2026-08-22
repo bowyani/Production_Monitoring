@@ -32,10 +32,6 @@ Prototype ระบบ Production Monitoring สำหรับเครื่�
 
 # Assumption
 
-ประกอบด้วย 3 ส่วน คือ Business, Technology, Field
-
-## Business
-
 ### Process
 
 1. สภาพโรงงานวันนี้ (As-Is)
@@ -56,58 +52,106 @@ Prototype ระบบ Production Monitoring สำหรับเครื่�
 
 ### GAP ที่โจทย์ไม่ได้บอก
 
-| #   | ปัญหาที่พบ                                                                                                                                                                               | แนวทางแก้ไข / สมมติฐานใน Prototype                                                                                                                                                                                                                 | [อ้างอิงมาตรฐาน](#มาตรฐานอ้างอิงทั้งหมด)                     |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| 1.1 | โจทย์ไม่ได้ระบุว่าปัจจุบันวางแผนการผลิต (Production Scheduling) ด้วยระบบใด                                                                                                               | Job Number สร้างจากระบบภายนอก (ERP) มาก่อน ระบบ monitoring บันทึกผลเทียบกับ Job ที่มีอยู่แล้วเท่านั้น ระบบจริงต้องมี integration layer เชื่อม MES กับ ERP/Planning                                                                                 | ANSI/ISA-95 (IEC 62264)                                      |
-| 1.2 | Injection Molding มี Startup Scrap เสมอ (mold ยังไม่ถึง thermal equilibrium) หากไม่แยกจาก reject ปกติ ตัวเลข Yield Rate จะบิดเบือนในงานสั่งผลิตจำนวนน้อย                                 | แยก field `startup_scrap_qty` ออกจาก reject ทั่วไป — shot แรก 3–5 shot หลัง mold change ถือเป็น purge/startup scrap มาตรฐาน                                                                                                                        | ไม่มีมาตรฐานสากลกำหนดตัวเลข — เป็น business rule ภายในองค์กร |
-| 1.3 | ต้องแยกว่า STOP คือหยุดตามแผนหรือ downtime จริง เพราะต้นทุนการ restart ไม่เท่ากัน (barrel เย็นตัวต้อง warm-up ใหม่)                                                                      | ใช้ threshold เวลาแยก planned pause ออกจาก downtime event ระบบจริงต้องจำแนก Planned/Unplanned/Changeover                                                                                                                                           | ISO 22400-2                                                  |
-| 1.4 | สัดส่วนเครื่องที่เชื่อมต่อได้จริงในบรรดา 200 เครื่องไม่ได้ระบุไว้ หากมีเครื่องเก่าจำนวนมาก dashboard จะมี blind spot ถาวร                                                                | Prototype จำลองเฉพาะเครื่องที่เชื่อมต่อได้เต็มรูปแบบตามโจทย์ ระบบจริงต้องมี manual data entry fallback สำหรับเครื่องที่เชื่อมต่อไม่ได้ และมีการบอกสัดส่วนไว้เพิ่มด้วยว่าค่าที่คำนวณนี้มาจากเครื่องทั้งหมดกี่ตัวแบ่งเป็นเครื่องใหม่เครื่องเก่ากี่ % | —                                                            |
-| 1.5 | การเชื่อมข้อมูลทั้งโรงงานหมายความว่าหากระบบล่ม (เช่นไฟไหม้) การผลิตทั้งหมดเสี่ยง "ตาบอด"                                                                                                 | ไม่ implement Disaster Recovery จริงใน Prototype แต่ออกแบบ config ให้รองรับ replication ระบบจริงต้องมี on-site server คู่กับ cloud replica พร้อม DR runbook                                                                                        | ISO 22301                                                    |
-| 1.6 | ผู้บริหารต้องการ KPI ที่แปลงจาก raw data แล้ว (Cost per Hour, OEE%, Reject rate, Energy, QC hold rate) ไม่ใช่ Cycle Time ดิบ                                                             | เผื่อ field `machine_rated_power_kw`, `labor_cost_per_hour`, `target_cycle_time_sec` ใน config ล่วงหน้า เพื่อคำนวณ KPI ได้โดยไม่ต้องแก้ schema — **implement แล้ว** เป็น Executive KPI view (`/kpi`) แยกจาก Operator dashboard                     | ISO 22400-2                                                  |
-| 1.7 | อุตสาหกรรม Injection Molding มี interface มาตรฐานเชื่อมเครื่องจักรกับ MES อยู่แล้ว การออกแบบ schema เองทั้งหมดทำให้เกิดต้นทุน adapter ซ้ำซ้อนเมื่อซื้อเครื่องรุ่นใหม่ที่รองรับมาตรฐานนี้ | Prototype ออกแบบ JSON payload เอง แต่จัดกลุ่ม field ตามแนวคิด `MachineData`/`JobData`/`ProcessData` เพื่อ map ไปมาตรฐานได้ในอนาคต                                                                                                                  | EUROMAP 77 (เทียบเท่า OPC 40077), IEC 62541 (OPC UA)         |
+| #   | ปัญหาที่พบ | แนวทางแก้ไข / สมมติฐานใน Prototype | [อ้างอิงมาตรฐาน](#มาตรฐานอ้างอิงทั้งหมด) |
+| --- | ---------- | ---------------------------------- | ---------------------------------------- |
+
+//คั่น section ว่า row ข้างล่างนี้คือเกี่ยวกับ Business
+| 1.1 | โจทย์ไม่ได้ระบุว่าปัจจุบันวางแผนการผลิต (Production Scheduling) ด้วยระบบใด | Job Number สร้างจากระบบภายนอก (ERP) มาก่อน ระบบ monitoring บันทึกผลเทียบกับ Job ที่มีอยู่แล้วเท่านั้น ระบบจริงต้องมี integration layer เชื่อม MES กับ ERP/Planning | ANSI/ISA-95 (IEC 62264) |
+| 1.2 | Injection Molding มี Startup Scrap เสมอ (mold ยังไม่ถึง thermal equilibrium) หากไม่แยกจาก reject ปกติ ตัวเลข Yield Rate จะบิดเบือนในงานสั่งผลิตจำนวนน้อย | แยก field `startup_scrap_qty` ออกจาก reject ทั่วไป — shot แรก 3–5 shot หลัง mold change ถือเป็น purge/startup scrap มาตรฐาน | ไม่มีมาตรฐานสากลกำหนดตัวเลข — เป็น business rule ภายในองค์กร |
+| 1.3 | ต้องแยกว่า STOP คือหยุดตามแผนหรือ downtime จริง เพราะต้นทุนการ restart ไม่เท่ากัน (barrel เย็นตัวต้อง warm-up ใหม่) | ใช้ threshold เวลาแยก planned pause ออกจาก downtime event ระบบจริงต้องจำแนก Planned/Unplanned/Changeover | ISO 22400-2 |
+| 1.4 | สัดส่วนเครื่องที่เชื่อมต่อได้จริงในบรรดา 200 เครื่องไม่ได้ระบุไว้ หากมีเครื่องเก่าจำนวนมาก dashboard จะมี blind spot ถาวร | Prototype จำลองเฉพาะเครื่องที่เชื่อมต่อได้เต็มรูปแบบตามโจทย์ ระบบจริงต้องมี manual data entry fallback สำหรับเครื่องที่เชื่อมต่อไม่ได้ และมีการบอกสัดส่วนไว้เพิ่มด้วยว่าค่าที่คำนวณนี้มาจากเครื่องทั้งหมดกี่ตัวแบ่งเป็นเครื่องใหม่เครื่องเก่ากี่ % | — |
+| 1.5 | การเชื่อมข้อมูลทั้งโรงงานหมายความว่าหากระบบล่ม (เช่นไฟไหม้) การผลิตทั้งหมดเสี่ยง "ตาบอด" | ไม่ implement Disaster Recovery จริงใน Prototype แต่ออกแบบ config ให้รองรับ replication ระบบจริงต้องมี on-site server คู่กับ cloud replica พร้อม DR runbook | ISO 22301 |
+| 1.6 | ผู้บริหารต้องการ KPI ที่แปลงจาก raw data แล้ว (Cost per Hour, OEE%, Reject rate, Energy) ไม่ใช่ Cycle Time ดิบ | เผื่อ field `machine_rated_power_kw`, `labor_cost_per_hour`, `target_cycle_time_sec` ใน config ล่วงหน้า เพื่อคำนวณ KPI ได้โดยไม่ต้องแก้ schema — **implement แล้ว** เป็น Executive KPI view (`/kpi`) แยกจาก Operator dashboard | ISO 22400-2 |
+| 1.7 | อุตสาหกรรม Injection Molding มี interface มาตรฐานเชื่อมเครื่องจักรกับ MES อยู่แล้ว การออกแบบ schema เองทั้งหมดทำให้เกิดต้นทุน adapter ซ้ำซ้อนเมื่อซื้อเครื่องรุ่นใหม่ที่รองรับมาตรฐานนี้ | Prototype ออกแบบ JSON payload เอง แต่จัดกลุ่ม field ตามแนวคิด `MachineData`/`JobData`/`ProcessData` เพื่อ map ไปมาตรฐานได้ในอนาคต | EUROMAP 77 (เทียบเท่า OPC 40077), IEC 62541 (OPC UA) |
+//คั่น section ว่า ข้างล่างนี้คือเกี่ยวกับ Dev
+| 2.1 | Hardcode รายชื่อเครื่องในโค้ดทำให้การขยายเป็น 200 เครื่องต้อง deploy ใหม่ทุกครั้ง | หน้า Admin เพิ่มเครื่องที่เขียนลง DB ทันทีโดยไม่ต้อง restart service — dynamic MQTT wildcard subscription | — |
+| 2.2 | ระบบที่รันคู่กับสายการผลิตจริง deploy พลาดมีต้นทุนสูงกว่าเว็บทั่วไป | ใช้ versioned migration script (up/down) รองรับ rollback ระดับ schema ระบบจริงควรใช้ blue-green deployment หรือ feature flag | — |
+| 2.3 | Backup ฐานข้อมูลขนาดใหญ่ระหว่างรับข้อมูล real-time จาก 200 เครื่องพร้อมกัน อาจทำให้ query ช้าลง | ใช้ scheduled `pg_dump` ที่ off-peak hour ใน Prototype ระบบจริงต้องใช้ read replica แยกสำหรับ backup ไม่ให้แย่ง I/O กับ write path หลัก | ISO/IEC 27001 Annex A.12.3 |
+| 2.4 | เมื่อเพิ่ม field ใหม่ในอนาคต ต้องไม่ทำให้ consumer เดิมพัง | ออกแบบ payload แบบ additive-only + `schemaVersion` ในทุก payload + API versioning (`/api/v1/`) | — |
+| 2.5 | การเปิดใช้ Modbus RTU บน CPU port หนึ่งจะยึด port นั้นทั้งหมด ทำให้ช่างเทคนิคแก้โปรแกรม PLC ผ่านสาย Serial เดิมพร้อมกันไม่ได้ | ระบุ PLC รุ่นที่มีพอร์ตเดียว/สองพอร์ตในเอกสาร วางแผนหน้าต่างเวลาแยกงาน programming ออกจากช่วงเก็บข้อมูล หรือใช้ Ethernet module เสริมแทน | Siemens S7-200 System Manual |
+| 2.6 | การอ่านค่าที่เป็น float/double word (เช่น Barrel Temperature) โดยไม่รับประกัน buffer consistency อาจเกิด "torn read" ทำให้ค่าอ่านผิดเพี้ยนแบบสุ่ม | ใช้ Modbus library ที่รับประกัน atomic multi-register read พร้อม sanity check ฝั่ง Backend (ค่ากระโดดเกิน physical limit ให้ flag เป็น suspect) | Modbus Application Protocol Specification |
+| 2.7 | Modbus function 03/04/16 อ่าน/เขียนได้สูงสุด 125 holding registers ต่อ 1 request เมื่อเพิ่ม sensor ในอนาคตอาจเกินเพดานนี้ | วางแผน logic แบ่ง (chunking) เป็นหลาย request โดยยังคง cycle time รวมให้อยู่ในเกณฑ์ที่ยอมรับได้ | Modbus Application Protocol Specification |
+
+//คั่น section ว่า ข้างล่างนี้คือเกี่ยวกับ Engineering
+
+| 3.1 | Path การ monitoring (PLC → Gateway → MQTT → Dashboard) มีจุดอ่อนที่ยอมรับได้ในงาน monitoring แต่ยอมรับไม่ได้ในงาน safety (network latency, broker ล่ม) | Emergency Shutdown ต้องเป็นวงจร hardwired แยกอิสระ ทำงานแบบ fail-safe ตัดไฟผ่าน safety relay/contactor โดยตรง ระบบ monitoring รับสถานะมา log และแจ้งเตือนเท่านั้น | IEC 60204-1, ISO 13849-1, IEC 62061, EUROMAP 78/78.1 |
+| 3.2 | หาก Circuit Breaker ตัดไฟทั้งไลน์ทุกครั้งที่เครื่องเดียวมีปัญหา จะเสียเวลา restart ทุกเครื่องโดยไม่จำเป็น | ทำ selective coordination study (time-current curve) ให้ CB ตัดเฉพาะจุดใกล้ fault ที่สุดก่อน | IEC 60947-2, IEEE 242 |
+| 3.3 | สาย Ethernet ทองแดง (Cat5e/Cat6) จำกัดระยะ 100 เมตรต่อ segment โรงงานขนาดใหญ่มักมีระยะเกินนี้ | ใช้ Fiber optic + media converter สำหรับ backbone ระหว่างโซนที่ไกลกัน | IEEE 802.3, TIA/EIA-568 |
+| 3.4 | RS-485 (Modbus) แบบไม่มี isolation จำกัดระยะเพียง 50 เมตรต่อ segment | ใช้ RS-485 repeater ขยายได้ถึง 1,000 เมตรต่อ segment เชื่อมต่อกันได้สูงสุด 9 ตัว | TIA/EIA-485-A |
+| 3.5 | อุปกรณ์ที่มี reference potential ต่างกันทำให้เกิดกระแสไม่พึงประสงค์ไหลผ่านสายสื่อสาร โดยเฉพาะเครื่องที่ใช้กระแสสูง ทำให้ communication error แบบสุ่ม | ใช้ isolated RS-485 repeater ทุกจุดที่ไม่ได้ใช้ single-point grounding เดียวกัน | IEEE 1100, IEC 61000-5-2 |
+| 3.6 | Servo motor/VFD สร้างสัญญาณรบกวนสูง หากเดินสาย signal ขนานกับสายไฟกำลังโดยไม่มี shielding จะเกิด noise | ใช้สาย shielded twisted pair แยก conduit จากสายไฟกำลัง พร้อม single-point grounding | IEC 61000-6-2/6-4 |
+| 3.7 | การเพิ่ม I/O module ให้เครื่องเก่าต้องเช็ค power budget (5VDC/24VDC) ของ CPU เดิม | ทำ site survey ก่อน retrofit ทุกเครื่อง คำนวณ power budget ตาม datasheet ก่อนเลือกซื้อ module | Siemens S7-200 System Manual |
+| 3.8 | ความสั่นสะเทือนต่อเนื่องจากกลไก clamping/injection ทำให้ terminal แบบ screw หลวมตามเวลา เกิดสัญญาณหลุดเป็นระยะ (false OFFLINE) | ใช้ terminal แบบ spring-loaded ในจุดที่ใกล้แหล่งสั่นสะเทือน | — |
+| 3.9 | การซ่อมบำรุงเครื่องเดียวควรทำได้โดยไม่กระทบเครื่องข้างเคียงในไลน์เดียวกัน | ออกแบบ physical isolation (MCCB แบบ withdrawable ที่มีตำแหน่ง ON/OFF/TEST/ISOLATE) ไว้ตั้งแต่ต้น ไม่พึ่ง software toggle อย่างเดียว | IEC 60947-3, ISO 14118 |
+| 3.10 | เครือข่ายฝั่ง IT (ERP, Office PC) และ OT (PLC, SCADA) ต้องแยกโซนชัดเจน //ลิ่งไปหัวข้อ IT OT แยกกัน | วางสถาปัตยกรรมผ่าน Industrial DMZ ตาม Purdue Model | IEC 62443, Purdue Enterprise Reference Architecture |
 
 ### Use Case
 
-วิเคราะห์จากมุมมอง Business Analyst — Actor คือ "บทบาทการใช้งานที่ระบบตั้งใจออกแบบไว้" ไม่ใช่สิทธิ์ที่ enforce จริงในโค้ด **Prototype นี้ยังไม่มีระบบ Login/แบ่ง Role** ทุกคนเปิด URL เดียวกันแล้วสลับหน้าเมนูได้ทั้งหมด (ดูหัวข้อ [แนวทางขยายจาก 3 เครื่องไปยัง 200 เครื่อง](#แนวทางขยายจาก-3-เครื่องไปยัง-200-เครื่อง) สำหรับแผนแบ่ง role ในระบบจริง) รายการด้านล่างคือ Use Case ที่ระบบ**ทำได้จริงในโค้ดตอนนี้**เท่านั้น ไม่รวมของ [Future Vision](#future-vision-สู่-unmanned-lights-out-operation) ที่ยังเป็นแค่แนวคิด
-
 | Actor                                         | คือใคร                                                                                                          | ใช้งานผ่านหน้าไหน                                                        |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| **Operator**                                  | พนักงานหน้างานที่เฝ้าเครื่องจักร ดูสถานะและค้นหา Job ระหว่างกะ                                                  | Operator, History, Import                                                |
-| **Chief Operator / Maintenance Lead**         | หัวหน้าไลน์หรือทีมซ่อมบำรุง ดูภาพรวม downtime และบันทึกการซ่อมบำรุง                                             | Chief Operator                                                           |
-| **Management (ผู้บริหาร)**                    | ผู้บริหารที่ต้องการ KPI สรุปเชิงธุรกิจ ไม่ลงรายละเอียดหน้างาน                                                   | Executive KPI, ERP (ดู margin)                                           |
-| **ERP / Master Data Officer**                 | เจ้าหน้าที่ดูแลข้อมูลกลางฝั่ง ERP (mock) — สเปคเครื่องจักรและราคาสินค้า                                         | ERP                                                                      |
-| **System Admin / IT**                         | ผู้ดูแลระบบ ลงทะเบียน-ปิดใช้งานเครื่องจักร ดูสุขภาพระบบ และตรวจ audit log                                       | Admin, Audit Log                                                         |
+| **Operator**                                  | พนักงานหน้างานที่เฝ้าเครื่องจักร ดูสถานะและค้นหา Job ระหว่างกะ                                                  | Operation, Production                                                    |
+| **Chief Operator / Maintenance Lead**         | หัวหน้าไลน์หรือทีมซ่อมบำรุง ดูภาพรวม downtime, บันทึกการซ่อมบำรุง, ลงทะเบียน/เปิดปิดเครื่องจักร                 | Machine Management, Performance, Manual Import                           |
+| **Management (ผู้บริหาร)**                    | ผู้บริหารที่ต้องการ KPI สรุปเชิงธุรกิจ ไม่ลงรายละเอียดหน้างาน                                                   | Executive KPI                                                            |
+| **ERP / Master Data Officer**                 | เจ้าหน้าที่ดูแลข้อมูลกลางฝั่ง ERP (mock) — สเปคเครื่องจักร, ราคาสินค้า, job order                               | ERP                                                                      |
+| **System Admin / IT**                         | ผู้ดูแลระบบ ดูสุขภาพระบบและ audit log, ปรับพารามิเตอร์ simulator สำหรับ demo                                    | Admin, Simulator Tuning                                                  |
 | **Machine Simulator** (System Actor)          | ตัวแทนเครื่องจักรจริง/PLC — เรียก API เองตอน commissioning และส่ง telemetry ต่อเนื่อง ไม่ใช่คนกด UI             | ไม่มีหน้า UI — คุยผ่าน MQTT + REST เท่านั้น                              |
 | **ERP System (ของจริง)** _(ยังไม่ implement)_ | ระบบ ERP จริงขององค์กร (เช่น SAP/Oracle/Odoo) ที่ในระบบจริงจะเป็นต้นทาง master data แทนหน้า ERP (mock) ปัจจุบัน | — (แสดงเป็นกล่องเส้นประใน [Architecture Diagram](#architecture-diagram)) |
 
-| #     | Use Case                                                            | Actor หลัก                        | รายละเอียด                                                                                                                                                          |
-| ----- | ------------------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| UC-1  | ดูสถานะเครื่องจักรแบบ Real-time                                     | Operator                          | ดูสถานะ (RUN/STOP/ALARM/OFFLINE) ของทุกเครื่องพร้อมกัน อัปเดตสดผ่าน WebSocket ไม่ต้อง refresh                                                                       |
-| UC-2  | รับการแจ้งเตือน Alarm แบบ Real-time                                 | Operator, Chief Operator          | เห็น Alarm ที่ active อยู่ทั้งโรงงานทันทีที่เกิด                                                                                                                    |
-| UC-3  | ค้นหา/ดูรายละเอียด Job การผลิต                                      | Operator                          | ค้นหา Job ด้วย Job Number/เครื่องจักร/SKU ดู qty ดี-เสีย-startup scrap และ Alarm ที่เกิดระหว่าง Job นั้น                                                            |
-| UC-4  | ดูประวัติ Telemetry/สถานะย้อนหลังของเครื่องจักร                     | Operator                          | เลือกช่วงเวลาย้อนดู cycle time, pressure, temperature และประวัติเปลี่ยนสถานะของเครื่องหนึ่งเครื่อง                                                                  |
-| UC-5  | นำเข้าข้อมูล Job ด้วยมือ (Manual Fallback)                          | Operator                          | อัปโหลด CSV บันทึกผล Job สำหรับเครื่องที่เชื่อมต่อ MQTT ไม่ได้ (`dataSource=MANUAL`)                                                                                |
-| UC-6  | ดูภาพรวมการซ่อมบำรุง                                                | Chief Operator / Maintenance Lead | ดู running-hours-since-PM ของแต่ละเครื่อง, downtime breakdown, สรุปตามรุ่นเครื่อง                                                                                   |
-| UC-7  | บันทึกการซ่อมบำรุงเครื่องจักร                                       | Chief Operator / Maintenance Lead | กดยืนยันว่าซ่อมบำรุงแล้ว ระบบ reset ตัวนับ running-hours-since-maintenance ให้อัตโนมัติ                                                                             |
-| UC-8  | ดู Executive KPI                                                    | Management                        | ดู OEE, Availability/Performance/Quality, Reject Rate, ประมาณการต้นทุนพลังงาน/แรงงาน ตามช่วงเวลาที่เลือก                                                            |
-| UC-9  | ดูสรุป Revenue/Margin ตาม Job/SKU/เครื่องจักร                       | Management, ERP Officer           | ดูรายได้-ต้นทุน-กำไรของ Job ที่เสร็จแล้ว โดย join ราคาขายและต้นทุนวัตถุดิบจาก SKU master data                                                                       |
-| UC-10 | จัดการ Master Data สเปคเครื่องจักร                                  | ERP Officer                       | เพิ่ม/แก้ไข/ลบ ชื่อ, รุ่น, กำลังไฟ, ต้นทุนแรงงาน, target cycle time, รอบซ่อมบำรุง, vendor ของเครื่องจักรแต่ละเครื่อง (ลบไม่ได้ถ้ายังมีเครื่องผูกอยู่ใน Admin)       |
-| UC-11 | จัดการ Master Data ราคาสินค้า (SKU)                                 | ERP Officer                       | เพิ่ม/แก้ไข/ลบราคาขายและต้นทุนวัตถุดิบต่อหน่วยของแต่ละ SKU                                                                                                          |
-| UC-12 | ลงทะเบียนเครื่องจักรใหม่เข้าระบบ                                    | System Admin                      | เลือก ERP asset ที่มีอยู่แล้วมาผูกเป็นเครื่องจักรที่ monitor ได้ — ถ้าเลือก `dataSource=MQTT` ระบบสั่ง start container ของ Simulator ให้อัตโนมัติผ่าน Docker socket |
-| UC-13 | เปิด/ปิดใช้งานเครื่องจักร                                           | System Admin                      | Deactivate เครื่องจักรจะสั่งหยุด container ของ Simulator จริง ไม่ใช่แค่เพิกเฉยข้อมูลที่ยังไหลเข้ามา                                                                 |
-| UC-14 | ตรวจสอบสุขภาพระบบ                                                   | System Admin                      | ดู row count, ขนาด DB, อัตราการไหลเข้าของข้อมูลแบบ real-time เพื่อเช็คว่าระบบยังรับข้อมูลปกติ                                                                       |
-| UC-15 | ตรวจสอบ Audit Log                                                   | System Admin                      | ดูประวัติการกระทำทุกครั้งในหน้า Admin/ERP (ใคร ทำอะไร กับอะไร เมื่อไหร่) เพื่อการตรวจสอบย้อนหลัง                                                                    |
-| UC-16 | Commissioning เครื่องจักรใหม่อัตโนมัติ                              | Machine Simulator                 | ตอน container เริ่มทำงาน เรียก ERP API เพื่อสร้าง/อัปเดต asset ของตัวเอง แล้วเรียก Admin API ลงทะเบียนตัวเองแบบ idempotent (จำลองขั้นตอนที่ช่างเทคนิคจริงต้องทำ)    |
-| UC-17 | ส่ง Telemetry/Job/Alarm ต่อเนื่อง                                   | Machine Simulator                 | Publish ข้อมูล status, cycle time, pressure, temperature, job, alarm ผ่าน MQTT ทุก 2 วินาที ให้ backend เขียนลง DB และ broadcast ต่อ                                |
-| UC-18 | ตรวจจับเครื่องจักร OFFLINE อัตโนมัติ _(ระบบทำเอง ไม่มี Actor คนกด)_ | Backend Watchdog                  | เช็ค `last_seen_at` ทุก 5 วินาที ถ้าเกิน threshold ตั้งสถานะเป็น `OFFLINE` ให้เองโดยไม่ต้องรอเครื่องส่งสัญญาณตัดการเชื่อมต่อ                                        |
+| #     | Use Case                                                            | Actor หลัก                        | รายละเอียด                                                                                                                                                                              |
+| ----- | ------------------------------------------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| UC-1  | ดูสถานะเครื่องจักรแบบ Real-time                                     | Operator                          | ดูสถานะ (RUN/STOP/ALARM/OFFLINE) ของทุกเครื่องพร้อมกัน อัปเดตสดผ่าน WebSocket ไม่ต้อง refresh                                                                                           |
+| UC-2  | รับการแจ้งเตือน Alarm แบบ Real-time                                 | Operator, Chief Operator          | เห็น Alarm ที่ active อยู่ทั้งโรงงานทันทีที่เกิด                                                                                                                                        |
+| UC-3  | ค้นหา/ดูรายละเอียด Job การผลิต                                      | Operator                          | ค้นหา Job ด้วย Job Number/เครื่องจักร/SKU ดู qty ดี-เสีย-startup scrap, Mold/Recipe, เทียบยอดสั่งซื้อ (Job Order) กับยอดผลิตได้จริง                                                     |
+| UC-4  | ดูประวัติ Telemetry/สถานะย้อนหลังของเครื่องจักร                     | Operator                          | เลือกช่วงเวลาย้อนดู cycle time, pressure, temperature และประวัติเปลี่ยนสถานะของเครื่องหนึ่งเครื่อง                                                                                      |
+| UC-5  | นำเข้าข้อมูล Job ด้วยมือ (Manual Fallback)                          | Chief Operator                    | อัปโหลด CSV บันทึกผล Job สำหรับเครื่องที่เชื่อมต่อ MQTT ไม่ได้ (`dataSource=MANUAL`)                                                                                                    |
+| UC-6  | ดูภาพรวมการซ่อมบำรุง/ประสิทธิภาพ                                    | Chief Operator / Maintenance Lead | ดู running-hours-since-PM ของแต่ละเครื่อง, downtime breakdown, สรุปตามรุ่นเครื่อง                                                                                                       |
+| UC-7  | บันทึกการซ่อมบำรุงเครื่องจักร                                       | Chief Operator / Maintenance Lead | กดยืนยันว่าซ่อมบำรุงแล้ว ระบบ reset ตัวนับ running-hours-since-maintenance ให้อัตโนมัติ                                                                                                 |
+| UC-8  | ดู Executive KPI                                                    | Management                        | ดู OEE, Availability/Performance/Quality, Reject Rate, Revenue/Cost/Margin (ต่อ SKU/เครื่องจักร), ประมาณการต้นทุนพลังงาน/แรงงาน ตามช่วงเวลาที่เลือก                                     |
+| UC-9  | จัดการ Master Data สเปคเครื่องจักร                                  | ERP Officer                       | เพิ่ม/แก้ไข/ลบ ชื่อ, รุ่น, กำลังไฟ, ต้นทุนแรงงาน, target cycle time, รอบซ่อมบำรุง, vendor ของเครื่องจักรแต่ละเครื่อง (ลบไม่ได้ถ้ายังมีเครื่องผูกอยู่ใน Admin)                           |
+| UC-10 | จัดการ Master Data ราคาสินค้า (SKU)                                 | ERP Officer                       | เพิ่ม/แก้ไข/ลบราคาขายและต้นทุนวัตถุดิบต่อหน่วยของแต่ละ SKU                                                                                                                              |
+| UC-11 | จัดการ Job Order (mock)                                             | ERP Officer                       | ดู/แก้ไข/เพิ่มยอดสั่งซื้อ (Job Number/SKU/จำนวน) — สร้างอัตโนมัติทุกครั้งที่ job การผลิตเริ่ม ไม่ต้องคีย์มือ แต่แก้ไขเองได้                                                             |
+| UC-12 | ลงทะเบียนเครื่องจักรใหม่เข้าระบบ                                    | Chief Operator                    | เลือก ERP asset ที่มีอยู่แล้วมาผูกเป็นเครื่องจักรที่ monitor ได้ — ถ้าเลือก `dataSource=MQTT` ระบบสั่ง start container ของ Simulator ให้อัตโนมัติผ่าน Docker socket                     |
+| UC-13 | เปิด/ปิดใช้งานเครื่องจักร                                           | Chief Operator                    | Deactivate เครื่องจักรจะสั่งหยุด container ของ Simulator จริง ไม่ใช่แค่เพิกเฉยข้อมูลที่ยังไหลเข้ามา                                                                                     |
+| UC-14 | ตรวจสอบสุขภาพระบบ                                                   | System Admin                      | ดู row count, ขนาด DB, อัตราการไหลเข้าของข้อมูลแบบ real-time เพื่อเช็คว่าระบบยังรับข้อมูลปกติ                                                                                           |
+| UC-15 | ตรวจสอบ Audit Log                                                   | System Admin                      | ดูประวัติการกระทำทุกครั้งในหน้า Admin/ERP (ใคร ทำอะไร กับอะไร เมื่อไหร่) เพื่อการตรวจสอบย้อนหลัง                                                                                        |
+| UC-16 | ปรับพารามิเตอร์ Simulator แบบ Live                                  | System Admin                      | ปรับความน่าจะเป็น alarm/reject/offline, ช่วง cycle time/pressure/temperature, tick interval, จำนวน startup scrap ของ simulator ที่กำลังรันอยู่ผ่าน MQTT control channel ไม่ต้อง restart |
+| UC-17 | Commissioning เครื่องจักรใหม่อัตโนมัติ                              | Machine Simulator                 | ตอน container เริ่มทำงาน เรียก ERP API เพื่อสร้าง/อัปเดต asset ของตัวเอง (พร้อม mock spec ที่สมจริงถ้าเป็นเครื่องใหม่) แล้วเรียก Admin API ลงทะเบียนตัวเองแบบ idempotent                |
+| UC-18 | ส่ง Telemetry/Job/Alarm ต่อเนื่อง                                   | Machine Simulator                 | Publish ข้อมูล status, cycle time, pressure, temperature, job (รวม planned qty), alarm ผ่าน MQTT ทุก 2 วินาที ให้ backend เขียนลง DB และ broadcast ต่อ                                  |
+| UC-19 | ตรวจจับเครื่องจักร OFFLINE อัตโนมัติ _(ระบบทำเอง ไม่มี Actor คนกด)_ | Backend Watchdog                  | เช็ค `last_seen_at` ทุก 5 วินาที ถ้าเกิน threshold ตั้งสถานะเป็น `OFFLINE` ให้เองโดยไม่ต้องรอเครื่องส่งสัญญาณตัดการเชื่อมต่อ                                                            |
 
 ---
 
-## Technology
+# Solution
 
-### Existing Philosophy
+## สมมติฐานและข้อจำกัด
 
-คือส่วนที่คิดว่า เป็นเทคโนโลยีที่เกี่ยวข้องที่จะใช้อ้างอิง
+//ตรงนี้อาจต้องเอาแต่ละ bullet มารวบเป็น workflow diagram swim lane
+
+- เครื่องจักรต้องมี asset record ใน ERP ก่อนเสมอ แล้วลงทะเบียนผ่าน Admin API ก่อนเสมอ ระบบจะไม่ auto-register จาก MQTT — Simulator เรียก ERP API เพื่อสร้าง/อัปเดต asset ของตัวเองแล้วเรียก Admin API เพื่อลงทะเบียนตอนเริ่มทำงาน จำลองขั้นตอน commissioning ของช่างเทคนิคจริงที่เครื่องมักถูกบันทึกไว้ใน ERP อยู่ก่อนแล้ว
+- Admin ลงทะเบียนเครื่องจักรใหม่ด้วยการ "เลือก" แถวใน `erp_machine_assets` ที่มีอยู่แล้ว ไม่ใช่พิมพ์ชื่อ/สเปคเข้าไปเอง เพื่อไม่ให้เครื่องจักรจริงเครื่องเดียวถูกลงทะเบียนซ้ำด้วยข้อมูลสเปคที่ไม่ตรงกัน
+- Job Number มาจากระบบภายนอก (สมมติว่าเป็น ERP) — ระบบ Monitoring บันทึกผลเทียบกับ Job ที่มีอยู่แล้วเท่านั้น หน้า ERP (mock) ในระบบนี้ทำหน้าที่เป็น price book ของ SKU, asset master data ของเครื่องจักร, และ mock job order (Job Number/SKU/จำนวนสั่ง — สร้างอัตโนมัติทุกครั้งที่ job เริ่มผลิต) ไม่ใช่ระบบ Order/Job management เต็มรูปแบบ — การเทียบยอดสั่งซื้อกับยอดผลิตจริงเป็นแค่การ join แสดงผลตาม `job_number`/`product_code` ในหน้า Production เท่านั้น ไม่ใช่ FK ผูกกันจริงระดับ DB
+- OFFLINE ตรวจจับด้วย watchdog (เช็ค `last_seen_at` ทุก 5 วิ, threshold ปรับได้ผ่าน env) ไม่ใช่ MQTT Last Will เพราะโจทย์คือเครื่อง "หยุดส่งข้อมูล" ไม่ใช่ "ตัดการเชื่อมต่อ"
+- Deactivate เครื่องจักรใน Admin = หยุดรับ telemetry จาก MQTT (status → `INACTIVE`) แต่ไม่ได้สั่งเครื่องจริงหยุดทำงาน — คนละเรื่องกับ Emergency Stop ที่ต้องเป็น hardwired safety circuit แยกอิสระ (ดู [Future Vision](#future-vision-สู่-unmanned-lights-out-operation))
+- Performance/OEE ต่อเครื่องจะว่าง (`—`) จนกว่าจะตั้งค่า Target Cycle Time ในหน้า ERP (asset master data ของเครื่องนั้น) — ไม่ default ค่าเดาเอง
+- Simulator ทำหน้าที่แทน ERP เปิด Job เอง แทนการสร้างหน้า mock-ERP แยก\*\* — ตรงกับสมมติฐานว่า Job Number มาจากภายนอกอยู่แล้ว ลดความซับซ้อนให้โฟกัสที่ Monitoring เป็นหลัก ข้อเสีย: แยกขอบเขต MES/ERP ไม่ชัดเท่าของจริง
+- Admin page + dynamic MQTT wildcard subscription แทนการ hardcode รายชื่อเครื่องแล้ว deploy ใหม่\*\* — Direction.md ข้อ 7 ระบุตรงๆ ว่ากรรมการอาจขอให้ "เพิ่มเครื่องจักร" กลางการ demo สด ถ้าไม่มีความสามารถนี้จะทำ requirement ข้อนี้ไม่ผ่านทันที ข้อเสีย: ใช้เวลาพัฒนาเพิ่มขึ้นเล็กน้อยเพราะต้องทำทั้ง Admin UI และ backend ฝั่ง dynamic subscribe
+- สถานะ (Status) ของเครื่องจักรมีความหมายว่าอะไรบ้าง
+  | Status | ความหมาย | นับเป็น Uptime หรือ Downtime |
+  | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
+  | `RUN` | เครื่องกำลังทำงานผลิตอยู่ | Uptime |
+  | `STOP` | เครื่องหยุดโดยตั้งใจ เช่น รอรอบงานถัดไป เปลี่ยนโหมด/แม่พิมพ์ระหว่างงาน (Intentional downtime) | Downtime |
+  | `ALARM` | เครื่องแจ้งเตือนปัญหา (ดูรายละเอียดเพิ่มที่ตาราง `alarms`) | Downtime |
+  | `OFFLINE` | ไม่มีข้อมูล telemetry เข้ามาเกิน threshold ที่ตั้งไว้ (`BACKEND_WATCHDOG_OFFLINE_THRESHOLD_SEC`, ค่าเริ่มต้น 15 วินาที) — Watchdog job ฝั่ง backend เป็นคนตั้งสถานะนี้เอง ไม่ใช่เครื่องจักรส่งมา | Downtime (นับแยกเป็น "Offline" ไม่รวมกับ Error) |
+
+- `OFFLINE` ยังเป็นค่าเริ่มต้น (`@default("OFFLINE")`) ของเครื่องที่เพิ่งลงทะเบียนใหม่หรือถูก reactivate ด้วย เพราะยังไม่มี telemetry เข้ามา
+- เครื่องที่ `dataSource = "MANUAL"` (ไม่มีการเชื่อมต่อจริง ข้อมูลมาจาก CSV import อย่างเดียว) จะไม่มี Watchdog ตรวจจับ `OFFLINE` ให้ เพราะไม่มี telemetry ให้ตรวจตั้งแต่แรก (ดู [Gap Analysis §1.4](#1-การวิเคราะห์เชิงธุรกิจ-business-analysis))
+- ถ้าเจอ status อื่นที่ไม่ใช่ 4 ค่านี้ (เช่น `IDLE` ที่หลุดมาจากไฟล์ CSV ที่ import) ระบบจะยังนับเป็น Downtime แต่แยกเก็บไว้เป็นหมวด "อื่นๆ" แทนที่จะทิ้งไปเฉยๆ
+
+//
+
+## Existing Technology
+
+คือส่วนที่คิดว่า เป็นเทคโนโลยีที่เกี่ยวข้องที่จะใช้อ้างอิง เพื่อให้เข้าใจก่อนไปหัวข้อ Technology ที่เลือกใช้และเหตุผล
 
 1. Automation Pyramid — โรงงานมีกี่ "ชั้น" ของระบบ
 
@@ -144,7 +188,10 @@ Level 0-1 คือ "ตัวเครื่องจักรกับสม�
 
 ทำไมไม่ใช้วิธีเดียวกันทั้งหมด — Modbus เร็วมากแต่ใช้ได้แค่ในสายไฟ/เครือข่ายเฉพาะที่ระยะใกล้ MQTT เหมาะกับข้อมูลจำนวนมากจากอุปกรณ์หลายพันตัวขึ้นไปบน Cloud โดยประหยัดทรัพยากร REST API เหมาะกับให้ระบบธุรกิจ "ขอข้อมูลสรุป" เป็นครั้งคราวมากกว่าข้อมูลดิบรัวๆ ตลอดเวลา
 
-Prototype นี้ใช้ MQTT เชื่อม Machine Simulator กับระบบกลาง แล้วใช้ REST API เชื่อมระบบกลางกับ Dashboard — ตรงตามระดับ IoT/Monitoring และ Enterprise ในตารางข้างต้น
+Prototype นี้ใช้ MQTT //TODO: อาจต้องเพิ่มว่า MQTT ในที่นี้หมายถึงจำลองว่า format เป็น mqtt (อิงตามมาตฐานการเขียน link ไปหัวข้อ API, GAP1.7) แต่ตัว prototype นี้ก็ทำบนคอมหมด ไม่มีเครื่องจักรจริง//
+เชื่อม Machine Simulator กับระบบกลาง แล้วใช้ REST API เชื่อมระบบกลางกับ Dashboard — ตรงตามระดับ IoT/Monitoring และ Enterprise ในตารางข้างต้น
+
+> **GAP ข้อ 2.5–2.7 เป็น Future Scope** เกี่ยวข้องกับตอนเชื่อมต่อ PLC จริงผ่าน Modbus เท่านั้น ไม่ใช่ส่วนหนึ่งของ Prototype ปัจจุบัน เพราะ Machine Simulator สวมบทบาทแทน PLC ทั้งก้อน จึงข้ามขั้นตอน "PLC poll ค่าจาก sensor ผ่าน Modbus" ไป — สร้างค่า Cycle Time/Pressure/Temperature เองแล้ว publish ผ่าน MQTT โดยตรง ไม่มี Modbus ปรากฏในโค้ด Prototype เลย สามข้อนี้แสดงความเข้าใจ pipeline ทั้งสายสำหรับตอนขยายไปเชื่อมเครื่องจักรจริง
 
 3. IT กับ OT ต่างกันอย่างไร และทำไมต้อง "Convergence"
 
@@ -156,62 +203,18 @@ Prototype นี้ใช้ MQTT เชื่อม Machine Simulator กับ
 
 วิธีที่อุตสาหกรรมทำกันคือกั้นโซนกลางเรียกว่า **Industrial DMZ** เปรียบเหมือนด่านตรวจกลางที่ข้อมูลจาก OT ต้องผ่านมาพักไว้ก่อน แล้วฝั่ง IT ค่อยมาดึงข้อมูลจากด่านนี้ แทนที่จะให้คอมพิวเตอร์สำนักงานเชื่อมตรงเข้าไปคุยกับเครื่องจักรเลย ระบบ Monitoring นี้ถูกออกแบบให้อยู่ในตำแหน่งด่านตรวจนี้พอดี — รับข้อมูลจากเครื่องจักรมาเก็บ แล้วให้ฝั่งบริหารมาดูผ่าน Dashboard อีกที ไม่เปิดให้ฝั่งสำนักงานเข้าไปยุ่งกับเครื่องจักรโดยตรง
 
-### GAP ที่โจทย์ไม่ได้บอก
-
-| #   | ปัญหาที่พบ                                                                                                                                        | แนวทางแก้ไข / สมมติฐานใน Prototype                                                                                                              | [อ้างอิงมาตรฐาน](#มาตรฐานอ้างอิงทั้งหมด)  |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| 2.1 | Hardcode รายชื่อเครื่องในโค้ดทำให้การขยายเป็น 200 เครื่องต้อง deploy ใหม่ทุกครั้ง                                                                 | หน้า Admin เพิ่มเครื่องที่เขียนลง DB ทันทีโดยไม่ต้อง restart service — dynamic MQTT wildcard subscription                                       | —                                         |
-| 2.2 | ระบบที่รันคู่กับสายการผลิตจริง deploy พลาดมีต้นทุนสูงกว่าเว็บทั่วไป                                                                               | ใช้ versioned migration script (up/down) รองรับ rollback ระดับ schema ระบบจริงควรใช้ blue-green deployment หรือ feature flag                    | —                                         |
-| 2.3 | Backup ฐานข้อมูลขนาดใหญ่ระหว่างรับข้อมูล real-time จาก 200 เครื่องพร้อมกัน อาจทำให้ query ช้าลง                                                   | ใช้ scheduled `pg_dump` ที่ off-peak hour ใน Prototype ระบบจริงต้องใช้ read replica แยกสำหรับ backup ไม่ให้แย่ง I/O กับ write path หลัก         | ISO/IEC 27001 Annex A.12.3                |
-| 2.4 | เมื่อเพิ่ม field ใหม่ในอนาคต ต้องไม่ทำให้ consumer เดิมพัง                                                                                        | ออกแบบ payload แบบ additive-only + `schemaVersion` ในทุก payload + API versioning (`/api/v1/`)                                                  | —                                         |
-| 2.5 | การเปิดใช้ Modbus RTU บน CPU port หนึ่งจะยึด port นั้นทั้งหมด ทำให้ช่างเทคนิคแก้โปรแกรม PLC ผ่านสาย Serial เดิมพร้อมกันไม่ได้                     | ระบุ PLC รุ่นที่มีพอร์ตเดียว/สองพอร์ตในเอกสาร วางแผนหน้าต่างเวลาแยกงาน programming ออกจากช่วงเก็บข้อมูล หรือใช้ Ethernet module เสริมแทน        | Siemens S7-200 System Manual              |
-| 2.6 | การอ่านค่าที่เป็น float/double word (เช่น Barrel Temperature) โดยไม่รับประกัน buffer consistency อาจเกิด "torn read" ทำให้ค่าอ่านผิดเพี้ยนแบบสุ่ม | ใช้ Modbus library ที่รับประกัน atomic multi-register read พร้อม sanity check ฝั่ง Backend (ค่ากระโดดเกิน physical limit ให้ flag เป็น suspect) | Modbus Application Protocol Specification |
-| 2.7 | Modbus function 03/04/16 อ่าน/เขียนได้สูงสุด 125 holding registers ต่อ 1 request เมื่อเพิ่ม sensor ในอนาคตอาจเกินเพดานนี้                         | วางแผน logic แบ่ง (chunking) เป็นหลาย request โดยยังคง cycle time รวมให้อยู่ในเกณฑ์ที่ยอมรับได้                                                 | Modbus Application Protocol Specification |
-
-> **ข้อ 2.5–2.7 เป็น Future Scope** เกี่ยวข้องกับตอนเชื่อมต่อ PLC จริงผ่าน Modbus เท่านั้น ไม่ใช่ส่วนหนึ่งของ Prototype ปัจจุบัน เพราะ Machine Simulator สวมบทบาทแทน PLC ทั้งก้อน จึงข้ามขั้นตอน "PLC poll ค่าจาก sensor ผ่าน Modbus" ไป — สร้างค่า Cycle Time/Pressure/Temperature เองแล้ว publish ผ่าน MQTT โดยตรง ไม่มี Modbus ปรากฏในโค้ด Prototype เลย สามข้อนี้แสดงความเข้าใจ pipeline ทั้งสายสำหรับตอนขยายไปเชื่อมเครื่องจักรจริง
-
-## Field
-
-ปัญหาจากวิศวะหน้างาน
-
-| #    | ปัญหาที่พบ                                                                                                                                             | แนวทางแก้ไข / สมมติฐานใน Prototype                                                                                                                                | [อ้างอิงมาตรฐาน](#มาตรฐานอ้างอิงทั้งหมด)             |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| 3.1  | Path การ monitoring (PLC → Gateway → MQTT → Dashboard) มีจุดอ่อนที่ยอมรับได้ในงาน monitoring แต่ยอมรับไม่ได้ในงาน safety (network latency, broker ล่ม) | Emergency Shutdown ต้องเป็นวงจร hardwired แยกอิสระ ทำงานแบบ fail-safe ตัดไฟผ่าน safety relay/contactor โดยตรง ระบบ monitoring รับสถานะมา log และแจ้งเตือนเท่านั้น | IEC 60204-1, ISO 13849-1, IEC 62061, EUROMAP 78/78.1 |
-| 3.2  | หาก Circuit Breaker ตัดไฟทั้งไลน์ทุกครั้งที่เครื่องเดียวมีปัญหา จะเสียเวลา restart ทุกเครื่องโดยไม่จำเป็น                                              | ทำ selective coordination study (time-current curve) ให้ CB ตัดเฉพาะจุดใกล้ fault ที่สุดก่อน                                                                      | IEC 60947-2, IEEE 242                                |
-| 3.3  | สาย Ethernet ทองแดง (Cat5e/Cat6) จำกัดระยะ 100 เมตรต่อ segment โรงงานขนาดใหญ่มักมีระยะเกินนี้                                                          | ใช้ Fiber optic + media converter สำหรับ backbone ระหว่างโซนที่ไกลกัน                                                                                             | IEEE 802.3, TIA/EIA-568                              |
-| 3.4  | RS-485 (Modbus) แบบไม่มี isolation จำกัดระยะเพียง 50 เมตรต่อ segment                                                                                   | ใช้ RS-485 repeater ขยายได้ถึง 1,000 เมตรต่อ segment เชื่อมต่อกันได้สูงสุด 9 ตัว                                                                                  | TIA/EIA-485-A                                        |
-| 3.5  | อุปกรณ์ที่มี reference potential ต่างกันทำให้เกิดกระแสไม่พึงประสงค์ไหลผ่านสายสื่อสาร โดยเฉพาะเครื่องที่ใช้กระแสสูง ทำให้ communication error แบบสุ่ม   | ใช้ isolated RS-485 repeater ทุกจุดที่ไม่ได้ใช้ single-point grounding เดียวกัน                                                                                   | IEEE 1100, IEC 61000-5-2                             |
-| 3.6  | Servo motor/VFD สร้างสัญญาณรบกวนสูง หากเดินสาย signal ขนานกับสายไฟกำลังโดยไม่มี shielding จะเกิด noise                                                 | ใช้สาย shielded twisted pair แยก conduit จากสายไฟกำลัง พร้อม single-point grounding                                                                               | IEC 61000-6-2/6-4                                    |
-| 3.7  | การเพิ่ม I/O module ให้เครื่องเก่าต้องเช็ค power budget (5VDC/24VDC) ของ CPU เดิม                                                                      | ทำ site survey ก่อน retrofit ทุกเครื่อง คำนวณ power budget ตาม datasheet ก่อนเลือกซื้อ module                                                                     | Siemens S7-200 System Manual                         |
-| 3.8  | ความสั่นสะเทือนต่อเนื่องจากกลไก clamping/injection ทำให้ terminal แบบ screw หลวมตามเวลา เกิดสัญญาณหลุดเป็นระยะ (false OFFLINE)                         | ใช้ terminal แบบ spring-loaded ในจุดที่ใกล้แหล่งสั่นสะเทือน                                                                                                       | —                                                    |
-| 3.9  | การซ่อมบำรุงเครื่องเดียวควรทำได้โดยไม่กระทบเครื่องข้างเคียงในไลน์เดียวกัน                                                                              | ออกแบบ physical isolation (MCCB แบบ withdrawable ที่มีตำแหน่ง ON/OFF/TEST/ISOLATE) ไว้ตั้งแต่ต้น ไม่พึ่ง software toggle อย่างเดียว                               | IEC 60947-3, ISO 14118                               |
-| 3.10 | เครือข่ายฝั่ง IT (ERP, Office PC) และ OT (PLC, SCADA) ต้องแยกโซนชัดเจน                                                                                 | วางสถาปัตยกรรมผ่าน Industrial DMZ ตาม Purdue Model                                                                                                                | IEC 62443, Purdue Enterprise Reference Architecture  |
-
-# Solution
-
-## สมมติฐานและข้อจำกัด
-
-- เครื่องจักรต้องมี asset record ใน ERP ก่อนเสมอ แล้วลงทะเบียนผ่าน Admin API ก่อนเสมอ ระบบจะไม่ auto-register จาก MQTT — Simulator เรียก ERP API เพื่อสร้าง/อัปเดต asset ของตัวเองแล้วเรียก Admin API เพื่อลงทะเบียนตอนเริ่มทำงาน จำลองขั้นตอน commissioning ของช่างเทคนิคจริงที่เครื่องมักถูกบันทึกไว้ใน ERP อยู่ก่อนแล้ว
-- Job Number มาจากระบบภายนอก (สมมติว่าเป็น ERP) — ระบบ Monitoring บันทึกผลเทียบกับ Job ที่มีอยู่แล้วเท่านั้น หน้า ERP (mock) ในระบบนี้ทำหน้าที่แค่เป็น price book ของ SKU และ asset master data ของเครื่องจักร ไม่ใช่ระบบ Order/Job management เต็มรูปแบบ
-- OFFLINE ตรวจจับด้วย watchdog (เช็ค `last_seen_at` ทุก 5 วิ, threshold ปรับได้ผ่าน env) ไม่ใช่ MQTT Last Will เพราะโจทย์คือเครื่อง "หยุดส่งข้อมูล" ไม่ใช่ "ตัดการเชื่อมต่อ"
-- Deactivate เครื่องจักรใน Admin = หยุดรับ telemetry จาก MQTT (status → `INACTIVE`) แต่ไม่ได้สั่งเครื่องจริงหยุดทำงาน — คนละเรื่องกับ Emergency Stop ที่ต้องเป็น hardwired safety circuit แยกอิสระ (ดู [Future Vision](#future-vision-สู่-unmanned-lights-out-operation))
-- QC Hold Rate ใน Executive KPI **ไม่ได้ทำ** — ไม่มี concept "QC hold" ใน data model ปัจจุบัน ไม่ใส่เลขปลอมมาแสดง
-- Performance/OEE ต่อเครื่องจะว่าง (`—`) จนกว่าจะตั้งค่า Target Cycle Time ในหน้า ERP (asset master data ของเครื่องนั้น) — ไม่ default ค่าเดาเอง
-
 ## Technology ที่เลือกใช้และเหตุผล
 
-| ส่วน              | เทคโนโลยี                                    | ทำไม                                                                                                                                                                   |
-| ----------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Machine Simulator | Node.js + `mqtt.js` (TypeScript)             | เขียนสั้น เชื่อม MQTT ตรงไปตรงมา, ใช้ runtime เดียวกับ backend ลด context switch                                                                                       |
-| Message Broker    | Mosquitto (MQTT)                             | event-driven แทน REST polling — latency ต่ำกว่า, จำลอง OFFLINE ได้เนียนด้วยการหยุด publish ตรงๆ, เป็น pattern มาตรฐานของ IIoT                                          |
-| Backend           | Node.js + TypeScript + Express               | type-safe, ecosystem MQTT/WebSocket ครบ, ทีมเล็กดูแลง่าย                                                                                                               |
-| Validation        | Zod                                          | validate payload จาก MQTT/REST ก่อนเข้า DB แบบ type-safe                                                                                                               |
-| ORM / Migration   | Prisma                                       | migration แบบ versioned (up/down) commit เข้า repo ได้ — สำคัญเพราะระบบรันคู่กับสายการผลิตจริง deploy พลาดมีต้นทุนสูง                                                  |
-| Database          | PostgreSQL เดียว (ไม่ใช้ time-series DB แยก) | ที่ระดับ 3-10 เครื่อง ข้อมูลยังน้อย DB เดียวดูแลง่ายกว่าและ join กับ job/alarm ได้สะดวก — ดูหัวข้อ [scaling ไป 200 เครื่อง](#แนวทางขยายจาก-3-เครื่องไปยัง-200-เครื่อง) |
-| Real-time push    | WebSocket (`ws`)                             | ให้ dashboard อัปเดตสดตอน demo (เครื่องเปลี่ยน ALARM ปุ๊บ จอเปลี่ยนปั๊บ) แทนที่จะ poll REST เอง                                                                        |
-| Dashboard         | React + Vite + TypeScript                    | เขียนเร็ว, HMR ระหว่าง dev, type-safe ร่วมกับ backend ผ่าน shared payload shape                                                                                        |
-
-เหตุผลเทียบกับทางเลือกอื่นที่พิจารณาแล้วไม่เลือก อยู่ในหัวข้อ [Design Rationale](#design-rationale--เหตุผลเชิงลึกเทียบกับทางเลือกอื่น) ด้านล่าง
+| ส่วน              | เทคโนโลยี                                    | ทำไม                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Machine Simulator | Node.js + `mqtt.js` (TypeScript)             | เขียนสั้น เชื่อม MQTT ตรงไปตรงมา, ใช้ runtime เดียวกับ backend ลด context switch                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Message Broker    | Mosquitto (MQTT)                             | event-driven แทน REST polling — latency ต่ำกว่า, จำลอง OFFLINE ได้เนียนด้วยการหยุด publish ตรงๆ, เป็น pattern มาตรฐานของ IIoT MQTT (pub/sub) แทน REST polling — event-driven ไม่ต้องยิง request รัวๆ, latency ต่ำกว่า, จำลอง OFFLINE ได้เนียนกว่าด้วยการหยุด publish ตรงๆ, เป็น pattern มาตรฐานของ IIoT ที่ตรงกับหัวข้อ "พิจารณาเป็นพิเศษ" ในเกณฑ์ประเมิน ข้อเสีย: ต้องดูแล broker เพิ่มหนึ่งตัว และ debug ยากกว่า REST ตรงที่ทดสอบด้วย curl ตรงๆ ไม่ได้ ต้องมี MQTT client ช่วย                                                                |
+| Backend           | Node.js + TypeScript + Express               | type-safe, ecosystem MQTT/WebSocket ครบ, ทีมเล็กดูแลง่าย                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Validation        | Zod                                          | validate payload จาก MQTT/REST ก่อนเข้า DB แบบ type-safe                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ORM / Migration   | Prisma                                       | migration แบบ versioned (up/down) commit เข้า repo ได้ — สำคัญเพราะระบบรันคู่กับสายการผลิตจริง deploy พลาดมีต้นทุนสูง Migration tool แบบ versioned (up/down) แทนการรัน SQL ALTER สดตอน deploy — ระบบที่รันคู่กับสายการผลิตจริง deploy พลาดมีต้นทุนสูง การมี rollback path ที่ทดสอบแล้วจึงจำเป็นกว่าเว็บทั่วไป ข้อเสีย: ต้องเรียนรู้ syntax ของ migration tool เพิ่ม                                                                                                                                                                             |
+| Database          | PostgreSQL เดียว (ไม่ใช้ time-series DB แยก) | ที่ระดับ 3-10 เครื่อง ข้อมูลยังน้อย DB เดียวดูแลง่ายกว่าและ join กับ job/alarm ได้สะดวก — ดูหัวข้อ [scaling ไป 200 เครื่อง](#แนวทางขยายจาก-3-เครื่องไปยัง-200-เครื่อง) PostgreSQL เดียวเก็บทั้ง telemetry และข้อมูลเชิงสัมพันธ์ แทน time-series DB เฉพาะทาง (Influx/Timescale) — ที่ระดับ 3-10 เครื่อง ข้อมูลยังน้อย DB เดียวดูแลง่ายกว่าและ join กับ job/alarm ได้สะดวก ข้อเสีย: ถ้าขยายไป 200 เครื่องจริงตาราง telemetry จะโตเร็ว ต้อง partitioning หรือย้ายไป TimescaleDB (เป็น extension บน Postgres ย้ายทีหลังได้โดยแทบไม่แก้โค้ด backend) |
+| Real-time push    | WebSocket (`ws`)                             | ให้ dashboard อัปเดตสดตอน demo (เครื่องเปลี่ยน ALARM ปุ๊บ จอเปลี่ยนปั๊บ) แทนที่จะ poll REST เอง                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Dashboard         | React + Vite + TypeScript                    | เขียนเร็ว, HMR ระหว่าง dev, type-safe ร่วมกับ backend ผ่าน shared payload shape                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 ---
 
@@ -249,14 +252,15 @@ flowchart TB
     ERPEXT["🏢 ERP System (ของจริง)<br/>เช่น SAP / Oracle / Odoo<br/>ยังไม่ implement ใน Prototype นี้"]
 
     subgraph DASH["Dashboard (React)"]
-        OP["Operator"]
-        HIST["History"]
-        KPI["Executive KPI"]
-        ERPV["ERP (ใหม่)"]
-        CO["Chief Operator (ใหม่)"]
-        ADMIN["Admin<br/>(รวม System Health)"]
-        IMPORT["Import<br/>(manual CSV fallback)"]
-        AUDIT["Audit Log"]
+        OP["Operation"]
+        PROD["Production<br/>(Job Lookup + Mold/Recipe/Order)"]
+        PERF["Performance<br/>(downtime/maintenance)"]
+        KPI["Executive KPI<br/>(รวม Revenue/Margin)"]
+        ERPV["ERP<br/>(Machine Assets · SKU · Job Orders)"]
+        CO["Machine Management"]
+        ADMIN["Admin<br/>(รวม System Health + Audit Log)"]
+        IMPORT["Manual Import"]
+        SIMTUNE["Simulator Tuning"]
     end
 
     SIM1 -- publish --> TOPICS
@@ -335,7 +339,7 @@ sequenceDiagram
         WS-->>Dash: push status update
     end
 
-    Note over Dash,DB: 4) Dashboard query — ERP / Chief Operator / KPI
+    Note over Dash,DB: 4) Dashboard query — ERP / Production / Performance / KPI
     Dash->>REST: GET /erp/summary หรือ /maintenance/overview หรือ /kpi/summary
     REST->>DB: join machines + erp_machine_assets + production_jobs + product_skus + alarms + status_events
     DB-->>REST: rows
@@ -344,45 +348,27 @@ sequenceDiagram
 
 ---
 
-### สถานะ (Status) ของเครื่องจักรมีความหมายว่าอะไรบ้าง
-
-`Machine.status` (และ `MachineTelemetry.status`) เป็นค่าที่มาจากตัว Machine Simulator ตรงๆ ผ่าน MQTT topic `factory/{machineId}/telemetry` ระบบมี 4 สถานะหลักที่ผลิตขึ้นเองและใช้แยกแยะ Downtime ในหน้า Chief Operator / KPI:
-
-| Status    | ความหมาย                                                                                                                                                                                         | นับเป็น Uptime หรือ Downtime                    |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
-| `RUN`     | เครื่องกำลังทำงานผลิตอยู่                                                                                                                                                                        | Uptime                                          |
-| `STOP`    | เครื่องหยุดโดยตั้งใจ เช่น รอรอบงานถัดไป เปลี่ยนโหมด/แม่พิมพ์ระหว่างงาน (Intentional downtime)                                                                                                    | Downtime                                        |
-| `ALARM`   | เครื่องแจ้งเตือนปัญหา (ดูรายละเอียดเพิ่มที่ตาราง `alarms`)                                                                                                                                       | Downtime                                        |
-| `OFFLINE` | ไม่มีข้อมูล telemetry เข้ามาเกิน threshold ที่ตั้งไว้ (`BACKEND_WATCHDOG_OFFLINE_THRESHOLD_SEC`, ค่าเริ่มต้น 15 วินาที) — Watchdog job ฝั่ง backend เป็นคนตั้งสถานะนี้เอง ไม่ใช่เครื่องจักรส่งมา | Downtime (นับแยกเป็น "Offline" ไม่รวมกับ Error) |
-
-หมายเหตุ:
-
-- `OFFLINE` ยังเป็นค่าเริ่มต้น (`@default("OFFLINE")`) ของเครื่องที่เพิ่งลงทะเบียนใหม่หรือถูก reactivate ด้วย เพราะยังไม่มี telemetry เข้ามา
-- เครื่องที่ `dataSource = "MANUAL"` (ไม่มีการเชื่อมต่อจริง ข้อมูลมาจาก CSV import อย่างเดียว) จะไม่มี Watchdog ตรวจจับ `OFFLINE` ให้ เพราะไม่มี telemetry ให้ตรวจตั้งแต่แรก (ดู [Gap Analysis §1.4](#1-การวิเคราะห์เชิงธุรกิจ-business-analysis))
-- ถ้าเจอ status อื่นที่ไม่ใช่ 4 ค่านี้ (เช่น `IDLE` ที่หลุดมาจากไฟล์ CSV ที่ import) ระบบจะยังนับเป็น Downtime แต่แยกเก็บไว้เป็นหมวด "อื่นๆ" แทนที่จะทิ้งไปเฉยๆ
-
----
-
 ## Database Structure
 
-PostgreSQL, 8 ตาราง (normalize ไม่ denormalize — join ได้ถูกต้อง ขยาย field ง่ายกว่าระยะยาว):
+PostgreSQL, 9 ตาราง (normalize ไม่ denormalize — join ได้ถูกต้อง ขยาย field ง่ายกว่าระยะยาว):
 
-| ตาราง                   | ใช้เก็บ                                                                                                           | Field สำคัญ                                                                                                                                                                                                        |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `machines`              | สถานะการเชื่อมต่อของเครื่องจักรที่ลงทะเบียน (operational registry — ไม่มี spec/cost แล้ว ดู `erp_machine_assets`) | `machine_id` (PK, = FK ไปยัง `erp_machine_assets.asset_id`), `status`, `data_source` (`MQTT`/`MANUAL`), `last_seen_at`, `is_active`, `last_maintenance_at`                                                         |
-| `erp_machine_assets`    | Master data ของเครื่องจักรฝั่ง ERP (mock) — ชื่อ, รุ่น, ต้นทุน, รอบซ่อมบำรุง, vendor เก็บที่นี่ที่เดียว           | `asset_id` (PK), `machine_name`, `machine_model`, `rated_power_kw`, `labor_cost_per_hour`, `target_cycle_time_sec`, `maintenance_interval_hours`, `vendor_name`, `purchase_date`, `location`, `manufacturer_phone` |
-| `machine_telemetry`     | Time-series ของทุก tick ที่ส่งเข้ามา                                                                              | `machine_id` (FK), `timestamp`, `status`, `cycle_time_sec`, `shot_count`, `injection_pressure_bar`, `barrel_temperature_c`                                                                                         |
-| `machine_status_events` | ประวัติการเปลี่ยนสถานะทุกครั้ง (ใช้คำนวณ Availability และ running-hours-since-maintenance ด้วย)                   | `machine_id` (FK), `from_status`, `to_status`, `changed_at`                                                                                                                                                        |
-| `production_jobs`       | งานผลิตแต่ละ Job (จาก MQTT หรือ CSV import)                                                                       | `job_number` (PK), `machine_id` (FK), `product_code`, `mold_id`, `recipe_id`, `good_qty`, `reject_qty`, `startup_scrap_qty`, `status`                                                                              |
-| `alarms`                | Alarm ที่เกิดขึ้น                                                                                                 | `machine_id` (FK), `job_number` (FK nullable), `alarm_code`, `alarm_message`, `alarm_timestamp`, `cleared_timestamp`                                                                                               |
-| `product_skus`          | Master data ราคา/ต้นทุนวัตถุดิบต่อ SKU ฝั่ง ERP (mock) — ใช้คำนวณ revenue/margin ในหน้า ERP                       | `product_code` (PK), `description`, `unit_price_thb`, `material_cost_per_unit_thb`                                                                                                                                 |
-| `audit_log`             | Log การกระทำทุกครั้งในหน้า Admin/ERP (ตอบ Direction.md §4.2 "มี Log สำหรับตรวจสอบการทำงานเบื้องต้น")              | `actor`, `action`, `target_type`, `target_id`, `detail` (JSON), `created_at`                                                                                                                                       |
+| ตาราง                   | ใช้เก็บ                                                                                                                                                                                                                                          | Field สำคัญ                                                                                                                                                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `machines`              | สถานะการเชื่อมต่อของเครื่องจักรที่ลงทะเบียน (operational registry — ไม่มี spec/cost แล้ว ดู `erp_machine_assets`)                                                                                                                                | `machine_id` (PK, = FK ไปยัง `erp_machine_assets.asset_id`), `status`, `data_source` (`MQTT`/`MANUAL`), `last_seen_at`, `is_active`, `last_maintenance_at`                                                         |
+| `erp_machine_assets`    | Master data ของเครื่องจักรฝั่ง ERP (mock) — ชื่อ, รุ่น, ต้นทุน, รอบซ่อมบำรุง, vendor เก็บที่นี่ที่เดียว (Startup Scrap ไม่ได้อยู่ที่นี่ — เป็นพารามิเตอร์ live ของ Simulator Tuning แทน เพราะไม่มีที่อื่นในระบบนี้ใช้ค่านี้นอกจาก simulator เอง) | `asset_id` (PK), `machine_name`, `machine_model`, `rated_power_kw`, `labor_cost_per_hour`, `target_cycle_time_sec`, `maintenance_interval_hours`, `vendor_name`, `purchase_date`, `location`, `manufacturer_phone` |
+| `machine_telemetry`     | Time-series ของทุก tick ที่ส่งเข้ามา                                                                                                                                                                                                             | `machine_id` (FK), `timestamp`, `status`, `cycle_time_sec`, `shot_count`, `injection_pressure_bar`, `barrel_temperature_c`                                                                                         |
+| `machine_status_events` | ประวัติการเปลี่ยนสถานะทุกครั้ง (ใช้คำนวณ Availability และ running-hours-since-maintenance ด้วย)                                                                                                                                                  | `machine_id` (FK), `from_status`, `to_status`, `changed_at`                                                                                                                                                        |
+| `production_jobs`       | งานผลิตแต่ละ Job (จาก MQTT หรือ CSV import) — ยอด**ผลิตจริง**                                                                                                                                                                                    | `job_number` (PK), `machine_id` (FK), `product_code`, `mold_id`, `recipe_id`, `good_qty`, `reject_qty`, `startup_scrap_qty`, `status`                                                                              |
+| `erp_job_orders`        | Mock "ใบสั่งซื้อจาก ERP" — ยอด**สั่งซื้อ**เท่านั้น สร้างอัตโนมัติทุกครั้งที่ job เริ่มผลิต ไม่ผูก FK กับ `production_jobs` (join ด้วย `job_number`/`product_code` แค่ตอนแสดงผลในหน้า Production)                                                 | `job_number` (PK), `product_code`, `quantity_ordered`                                                                                                                                                              |
+| `alarms`                | Alarm ที่เกิดขึ้น                                                                                                                                                                                                                                | `machine_id` (FK), `job_number` (FK nullable), `alarm_code`, `alarm_message`, `alarm_timestamp`, `cleared_timestamp`                                                                                               |
+| `product_skus`          | Master data ราคา/ต้นทุนวัตถุดิบต่อ SKU ฝั่ง ERP (mock) — ใช้คำนวณ revenue/margin ในหน้า Executive KPI                                                                                                                                            | `product_code` (PK), `description`, `unit_price_thb`, `material_cost_per_unit_thb`                                                                                                                                 |
+| `audit_log`             | Log การกระทำทุกครั้งในหน้า Admin/ERP (ตอบ Direction.md §4.2 "มี Log สำหรับตรวจสอบการทำงานเบื้องต้น")                                                                                                                                             | `actor`, `action`, `target_type`, `target_id`, `detail` (JSON), `created_at`                                                                                                                                       |
 
-`machines.machine_id` และ `erp_machine_assets.asset_id` เป็น 1:1 กันโดยใช้ค่าเดียวกันเป็น key ทั้งคู่ (shared primary key) — Admin ลงทะเบียนเครื่องจักรใหม่ด้วยการ "เลือก" แถวใน `erp_machine_assets` ที่มีอยู่แล้ว ไม่ใช่พิมพ์ชื่อ/สเปคเข้าไปเอง เพื่อไม่ให้เครื่องจักรจริงเครื่องเดียวถูกลงทะเบียนซ้ำด้วยข้อมูลสเปคที่ไม่ตรงกัน (ดู [Design Rationale](#design-rationale--เหตุผลเชิงลึกเทียบกับทางเลือกอื่น))
+`machines.machine_id` และ `erp_machine_assets.asset_id` เป็น 1:1 กันโดยใช้ค่าเดียวกันเป็น key ทั้งคู่ (shared primary key)
 
 ### ERD
 
-`product_skus` ↔ `production_jobs` เป็นความสัมพันธ์เชิง logic เท่านั้น (join กันด้วย `product_code` ในโค้ดฝั่ง `erp.ts`/`kpi.ts`) ไม่ได้ผูกเป็น foreign key จริงระดับ DB — แสดงเป็นเส้นประในไดอะแกรม `audit_log` เป็น polymorphic log (`target_type`+`target_id` อ้างได้ทั้ง machine/asset/sku) จึงไม่มี FK ผูกกับตารางไหนเลย
+`product_skus` ↔ `production_jobs` และ `erp_job_orders` ↔ `production_jobs` เป็นความสัมพันธ์เชิง logic เท่านั้น (join กันด้วย `product_code`/`job_number` ในโค้ดฝั่ง `erp.ts`/`kpi.ts`/หน้า Production) ไม่ได้ผูกเป็น foreign key จริงระดับ DB — แสดงเป็นเส้นประในไดอะแกรม `audit_log` เป็น polymorphic log (`target_type`+`target_id` อ้างได้ทั้ง machine/asset/sku) จึงไม่มี FK ผูกกับตารางไหนเลย
 
 ```mermaid
 erDiagram
@@ -393,6 +379,7 @@ erDiagram
     MACHINE ||--o{ ALARM : raises
     PRODUCTION_JOB ||--o{ ALARM : "occurs during"
     PRODUCT_SKU ||..o{ PRODUCTION_JOB : "priced via product_code (no FK)"
+    ERP_JOB_ORDER ||..o{ PRODUCTION_JOB : "matched by job_number/product_code (no FK)"
 
     MACHINE {
         string machine_id PK
@@ -466,6 +453,13 @@ erDiagram
         datetime created_at
         datetime updated_at
     }
+    ERP_JOB_ORDER {
+        string job_number PK
+        string product_code "logical FK -> PRODUCTION_JOB.product_code"
+        int quantity_ordered
+        datetime created_at
+        datetime updated_at
+    }
     AUDIT_LOG {
         bigint id PK
         string actor
@@ -488,6 +482,7 @@ Schema เต็ม: [`backend/prisma/schema.prisma`](backend/prisma/schema.pris
 Topic: `factory/{machineId}/telemetry` | `factory/{machineId}/job` | `factory/{machineId}/alarm`
 Backend subscribe ด้วย wildcard `factory/+/...` ครั้งเดียวตอน start — เพิ่มเครื่องใหม่ไม่ต้อง redeploy
 
+**`schemaVersion` ใน payload + API versioning (`/api/v1/`) แทนการไม่ทำ versioning เลย** — โรงงานมีเครื่องจักรหลาย Generation ใช้งานพร้อมกันเป็นปกติ การันตีว่า consumer เดิมที่อ่าน payload v1 จะไม่พังเมื่อเพิ่ม field ใหม่ในอนาคตจึงสำคัญกว่าความเรียบง่ายตอนนี้
 ทุก payload มี `schemaVersion` (เช่น `"1.0"`) และออกแบบแบบ additive-only (field ใหม่ในอนาคตต้องเป็น optional ห้ามลบ/เปลี่ยนชื่อ field เดิม) เพื่อไม่ให้ consumer เก่าพังเมื่อเพิ่ม field ใหม่ เช่น multi-zone temperature — และจัดกลุ่ม field เป็น `machineData` / `processData` / `jobData` / `alarmData` เผื่อ map เข้ามาตรฐาน **EUROMAP 77** (เทียบเท่า OPC 40077) ในอนาคต ตัวอย่าง telemetry:
 
 ```json
@@ -511,67 +506,29 @@ Backend subscribe ด้วย wildcard `factory/+/...` ครั้งเดี
 
 Prefix ทุก endpoint ด้วย `/api/v1/` เพื่อให้เพิ่ม `/api/v2/` ในอนาคตได้โดยไม่กระทบ consumer เดิม
 
-| Endpoint                                                                                             | ใช้ทำอะไร                                                                                                                                                                                             |
-| ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /machines`                                                                                      | สถานะล่าสุดทุกเครื่อง (active เท่านั้น)                                                                                                                                                               |
-| `GET /machines/:id/history?from=&to=`                                                                | Telemetry ย้อนหลังตามช่วงเวลา                                                                                                                                                                         |
-| `GET /machines/:id/events?from=&to=`                                                                 | ประวัติเปลี่ยนสถานะตามช่วงเวลา                                                                                                                                                                        |
-| `GET /machines/:id/alarms?from=&to=`                                                                 | ประวัติ Alarm ของเครื่องตามช่วงเวลา                                                                                                                                                                   |
-| `GET /jobs?machineId=&q=&limit=`                                                                     | List/ค้นหา Job (partial match)                                                                                                                                                                        |
-| `GET /jobs/:jobNumber`                                                                               | รายละเอียด Job + Alarm ที่เกิดระหว่างงานนั้น                                                                                                                                                          |
-| `GET /alarms/active`                                                                                 | Alarm ที่ active อยู่ทั้งโรงงาน                                                                                                                                                                       |
-| `GET /kpi/summary?from=&to=`                                                                         | OEE, Availability/Performance/Quality, Reject Rate, Est. Energy/Labor Cost                                                                                                                            |
-| `GET /admin/machines`, `POST /admin/machines`, `PATCH /admin/machines/:id`                           | ลงทะเบียน/เปิด-ปิดเครื่องจักร — `POST` รับแค่ `{ assetId, dataSource }` (เลือกจาก `erp_machine_assets` ที่มีอยู่ ไม่รับสเปคเป็น free text) และยังคุม simulator container ให้ด้วยถ้า `dataSource=MQTT` |
-| `POST /admin/machines/:id/maintenance`                                                               | บันทึกว่าซ่อมบำรุงแล้ว (reset ตัวนับ running-hours-since-maintenance)                                                                                                                                 |
-| `GET /admin/audit-log?targetId=&action=`                                                             | ประวัติการกระทำทุกครั้งในหน้า Admin/ERP                                                                                                                                                               |
-| `GET /admin/system-stats`                                                                            | Row count/ขนาด DB/อัตราการไหลเข้าของข้อมูล แบบ real-time — ใช้ในหัวข้อ System Health ของหน้า Admin                                                                                                    |
-| `POST /admin/import/jobs`                                                                            | Import Job/Production data จาก CSV สำหรับเครื่องที่เชื่อมต่อไม่ได้ (`dataSource=MANUAL`)                                                                                                              |
-| `GET /jobs` รองรับเพิ่ม `productCode=&status=&sort=&dir=`                                            | Filter/sort ผลค้นหา Job (ใช้ในหน้า Operator)                                                                                                                                                          |
-| `GET /erp/machine-assets`, `PUT /erp/machine-assets/:assetId`, `DELETE /erp/machine-assets/:assetId` | Master data เครื่องจักรฝั่ง ERP — ชื่อ/รุ่น/ต้นทุน/รอบซ่อมบำรุง/vendor แก้ไขที่นี่ที่เดียว, ลบไม่ได้ถ้ายังมีเครื่องจักรใน Admin อ้างถึงอยู่ (409)                                                     |
-| `GET /erp/skus`, `PUT /erp/skus/:productCode`, `DELETE /erp/skus/:productCode`                       | Master data ราคา/ต้นทุนวัตถุดิบต่อ SKU ฝั่ง ERP                                                                                                                                                       |
-| `GET /erp/job-orders?from=&to=&machineId=&productCode=`, `GET /erp/summary?from=&to=`                | Job พร้อมราคา (revenue/cost/margin) และสรุปรวมตาม SKU/เครื่องจักร — ใช้ในหน้า ERP                                                                                                                     |
-| `GET /maintenance/overview?from=&to=`                                                                | Running-hours-since-PM, downtime breakdown, และสรุปตามรุ่นเครื่อง — ใช้ในหน้า Chief Operator                                                                                                          |
-| `WS /live`                                                                                           | push telemetry/job/alarm/status event แบบ real-time                                                                                                                                                   |
-
----
-
-## Design Rationale — เหตุผลเชิงลึกเทียบกับทางเลือกอื่น
-
-**MQTT (pub/sub) แทน REST polling** — event-driven ไม่ต้องยิง request รัวๆ, latency ต่ำกว่า, จำลอง OFFLINE ได้เนียนกว่าด้วยการหยุด publish ตรงๆ, เป็น pattern มาตรฐานของ IIoT ที่ตรงกับหัวข้อ "พิจารณาเป็นพิเศษ" ในเกณฑ์ประเมิน ข้อเสีย: ต้องดูแล broker เพิ่มหนึ่งตัว และ debug ยากกว่า REST ตรงที่ทดสอบด้วย curl ตรงๆ ไม่ได้ ต้องมี MQTT client ช่วย
-
-**PostgreSQL เดียวเก็บทั้ง telemetry และข้อมูลเชิงสัมพันธ์ แทน time-series DB เฉพาะทาง (Influx/Timescale)** — ที่ระดับ 3-10 เครื่อง ข้อมูลยังน้อย DB เดียวดูแลง่ายกว่าและ join กับ job/alarm ได้สะดวก ข้อเสีย: ถ้าขยายไป 200 เครื่องจริงตาราง telemetry จะโตเร็ว ต้อง partitioning หรือย้ายไป TimescaleDB (เป็น extension บน Postgres ย้ายทีหลังได้โดยแทบไม่แก้โค้ด backend) — ดู [scaling section](#แนวทางขยายจาก-3-เครื่องไปยัง-200-เครื่อง)
-
-**Schema แบบ normalize 5 ตาราง แทนตารางเดียวแบบ denormalize** — สะท้อนความเข้าใจ relational design ข้อเสีย: query ต้อง join หลายตารางขึ้นเล็กน้อย แลกกับความถูกต้องของข้อมูลและขยาย field ได้ง่ายกว่าในระยะยาว
-
-**WebSocket push แทน Dashboard polling REST เอง** — ให้ประสบการณ์ real-time จริงตอน demo สด ข้อเสีย: เพิ่มความซับซ้อนเรื่อง connection/reconnect management เทียบกับ REST polling ที่ง่ายกว่าแต่มี delay
-
-**Backend watchdog (เช็ค `last_seen_at`) แทน MQTT Last Will Testament (LWT) สำหรับตรวจ OFFLINE** — โจทย์ระบุว่า simulator "หยุดส่งข้อมูล" ไม่ใช่ "ตัดการเชื่อมต่อ" ถ้าใช้ LWT อย่างเดียวจะจับ OFFLINE ไม่ได้ในกรณีนี้ watchdog จับได้ทุกกรณีแต่แลกกับความหน่วง (รอครบ threshold)
-
-**Simulator ทำหน้าที่แทน ERP เปิด Job เอง แทนการสร้างหน้า mock-ERP แยก** — ตรงกับสมมติฐานว่า Job Number มาจากภายนอกอยู่แล้ว ลดความซับซ้อนให้โฟกัสที่ Monitoring เป็นหลัก ข้อเสีย: แยกขอบเขต MES/ERP ไม่ชัดเท่าของจริง
-
-**Admin page + dynamic MQTT wildcard subscription แทนการ hardcode รายชื่อเครื่องแล้ว deploy ใหม่** — Direction.md ข้อ 7 ระบุตรงๆ ว่ากรรมการอาจขอให้ "เพิ่มเครื่องจักร" กลางการ demo สด ถ้าไม่มีความสามารถนี้จะทำ requirement ข้อนี้ไม่ผ่านทันที ข้อเสีย: ใช้เวลาพัฒนาเพิ่มขึ้นเล็กน้อยเพราะต้องทำทั้ง Admin UI และ backend ฝั่ง dynamic subscribe
-
-**Migration tool แบบ versioned (up/down) แทนการรัน SQL ALTER สดตอน deploy** — ระบบที่รันคู่กับสายการผลิตจริง deploy พลาดมีต้นทุนสูง การมี rollback path ที่ทดสอบแล้วจึงจำเป็นกว่าเว็บทั่วไป ข้อเสีย: ต้องเรียนรู้ syntax ของ migration tool เพิ่ม
-
-**`schemaVersion` ใน payload + API versioning (`/api/v1/`) แทนการไม่ทำ versioning เลย** — โรงงานมีเครื่องจักรหลาย Generation ใช้งานพร้อมกันเป็นปกติ การันตีว่า consumer เดิมที่อ่าน payload v1 จะไม่พังเมื่อเพิ่ม field ใหม่ในอนาคตจึงสำคัญกว่าความเรียบง่ายตอนนี้
-
-**Backend คุม lifecycle ของ simulator container ตรงผ่าน Docker socket แทนให้ผู้ใช้รัน `docker compose run` เอง** — Direction.md ข้อ 7 ระบุว่ากรรมการอาจขอ "เพิ่มเครื่องจักร" กลาง demo และการ Deactivate ควรทำให้เครื่องเงียบจริง ไม่ใช่แค่ให้ backend เพิกเฉยข้อมูลที่ยังไหลเข้ามา วิธีนี้ mount `/var/run/docker.sock` เข้า backend container แล้วใช้ `dockerode` สั่ง create/start/stop container ของ simulator ตรงๆ **ข้อเสียที่ต้องพูดตรงๆ**: การ mount docker.sock ให้สิทธิ์ backend container ควบคุม Docker daemon ของ host ระดับเดียวกับ root — ยอมรับได้เพราะนี่คือ prototype รันบนเครื่อง dev เท่านั้น และทุก "เครื่องจักร" ในระบบนี้คือ container ที่เราคุมเองทั้งหมด **แนวทางนี้ใช้กับของจริงไม่ได้เลย** เพราะ PLC จริงไม่ใช่ container ที่สั่ง start/stop ได้ — เป็น convenience layer เฉพาะ prototype เท่านั้น ถ้า Docker ไม่พร้อมใช้งาน (`DOCKER_MANAGEMENT_ENABLED=false` หรือ mount ไม่ได้) ระบบยัง fallback กลับไปให้ลงทะเบียนเฉยๆ แล้วรอข้อมูลเข้าได้ตามปกติ ไม่ fail ทั้งระบบ
-
-**Admin ลงทะเบียนเครื่องจักรด้วยการเลือกจาก ERP master data แทนการพิมพ์ชื่อ/สเปคเข้าไปเอง** — เดิม `machines` เก็บทั้งสถานะการเชื่อมต่อและสเปคเครื่องจักร (ชื่อ, รุ่น, ต้นทุนแรงงาน, รอบซ่อมบำรุง, vendor) ไว้แถวเดียวกัน ซึ่งเปิดช่องให้เครื่องจักรจริงเครื่องเดียวถูกลงทะเบียนซ้ำสองครั้งด้วยสเปคที่ไม่ตรงกัน (พิมพ์ชื่อ/ตัวเลขผิดจากครั้งก่อน) ตอนนี้แยกสเปคออกไปอยู่ใน `erp_machine_assets` (single source of truth, แก้ไขได้จากหน้า ERP เท่านั้น) ส่วน `machines` เหลือแค่สถานะเชื่อมต่อ (`status`, `data_source`, `is_active`) และ reference กลับไปที่ asset ด้วย shared primary key — หน้า Admin จึงทำได้แค่ "เลือก" asset ที่มีอยู่แล้วมาต่อสาย ไม่ใช่พิมพ์สเปคเข้าไปใหม่ทุกครั้ง ข้อเสีย: ต้องสร้าง ERP asset ก่อนเสมอถึงจะลงทะเบียนเครื่องจักรได้ (เพิ่มขั้นตอนหนึ่งก้าวเทียบกับฟอร์มเดียวจบแบบเดิม) แลกกับไม่มีทางที่สเปคจะ mismatch กันระหว่างสองที่อีกต่อไป — ตรงกับสมมติฐานที่ว่า ERP คือระบบต้นทาง (Level 4) ที่ควรมีข้อมูล asset อยู่แล้วก่อนช่างเทคนิคจะมา commissioning เครื่องใน Admin (Level 2)
-
-**Admin รวม System Health เข้าเป็นหัวข้อเดียวกัน แทนการแยกหน้า** — ทั้งสองหน้าเป็นงานของคนกลุ่มเดียวกัน (IT/ผู้ดูแลระบบ) ไม่ใช่ operator หรือ management จึงรวมเป็น "Admin — IT System Management" หน้าเดียว: ส่วนบนคุมการเชื่อมต่อเครื่องจักร (Source/Status/Active) ส่วนล่างคือสุขภาพ database/ingestion แบบ real-time ที่เดิมอยู่หน้า System Health แยก
-
-### Crosswalk: Design ตอบ Gap ข้อไหนบ้าง
-
-| ข้อ Gap | ประเด็น                              | วิธีที่ Design นี้ตอบ                                              |
-| ------- | ------------------------------------ | ------------------------------------------------------------------ |
-| 1.2     | Startup scrap ปนกับ reject           | field `startup_scrap_qty` แยกใน `production_jobs`                  |
-| 1.7     | เผื่อ map เข้ามาตรฐาน EUROMAP 77     | payload จัดกลุ่ม `machineData`/`jobData`/`processData`/`alarmData` |
-| 2.1     | Hardcode รายชื่อเครื่อง              | Admin API/GUI + MQTT wildcard subscription                         |
-| 2.2     | Deploy พลาดต้นทุนสูง                 | Migration tool แบบ versioned up/down                               |
-| 2.4     | Field ใหม่ต้องไม่ทำ consumer เดิมพัง | `schemaVersion` ในทุก payload + `/api/v1/` ใน REST API             |
-
-_ข้อ 2.5–2.7 (Modbus RTU/torn read/register limit) เป็น Future Scope เกี่ยวกับตอนเชื่อมต่อ PLC จริง — ไม่เกี่ยวกับ Prototype นี้เพราะ Machine Simulator สวมบทบาทแทน PLC ทั้งก้อน (ข้าม "PLC poll ค่าจาก sensor ผ่าน Modbus" ไป สร้างค่าเองแล้ว publish MQTT ตรง) รายละเอียดอยู่ใน Gap Analysis ด้านล่าง_
+| Endpoint                                                                                             | ใช้ทำอะไร                                                                                                                                                                                                         |
+| ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /machines`                                                                                      | สถานะล่าสุดทุกเครื่อง (active เท่านั้น)                                                                                                                                                                           |
+| `GET /machines/:id/history?from=&to=`                                                                | Telemetry ย้อนหลังตามช่วงเวลา                                                                                                                                                                                     |
+| `GET /machines/:id/events?from=&to=`                                                                 | ประวัติเปลี่ยนสถานะตามช่วงเวลา                                                                                                                                                                                    |
+| `GET /machines/:id/alarms?from=&to=`                                                                 | ประวัติ Alarm ของเครื่องตามช่วงเวลา                                                                                                                                                                               |
+| `GET /jobs?machineId=&q=&limit=`                                                                     | List/ค้นหา Job (partial match)                                                                                                                                                                                    |
+| `GET /jobs/:jobNumber`                                                                               | รายละเอียด Job + Alarm ที่เกิดระหว่างงานนั้น                                                                                                                                                                      |
+| `GET /alarms/active`                                                                                 | Alarm ที่ active อยู่ทั้งโรงงาน                                                                                                                                                                                   |
+| `GET /kpi/summary?from=&to=`                                                                         | OEE, Availability/Performance/Quality, Reject Rate, Est. Energy/Labor Cost                                                                                                                                        |
+| `GET /admin/machines`, `POST /admin/machines`, `PATCH /admin/machines/:id`                           | ลงทะเบียน/เปิด-ปิดเครื่องจักร — `POST` รับแค่ `{ assetId, dataSource }` (เลือกจาก `erp_machine_assets` ที่มีอยู่ ไม่รับสเปคเป็น free text) และยังคุม simulator container ให้ด้วยถ้า `dataSource=MQTT`             |
+| `POST /admin/machines/:id/maintenance`                                                               | บันทึกว่าซ่อมบำรุงแล้ว (reset ตัวนับ running-hours-since-maintenance)                                                                                                                                             |
+| `GET /admin/audit-log?targetId=&action=`                                                             | ประวัติการกระทำทุกครั้งในหน้า Admin/ERP                                                                                                                                                                           |
+| `GET /admin/system-stats`                                                                            | Row count/ขนาด DB/อัตราการไหลเข้าของข้อมูล แบบ real-time — ใช้ในหัวข้อ System Health ของหน้า Admin                                                                                                                |
+| `POST /admin/import/jobs`                                                                            | Import Job/Production data จาก CSV สำหรับเครื่องที่เชื่อมต่อไม่ได้ (`dataSource=MANUAL`)                                                                                                                          |
+| `GET /jobs` รองรับเพิ่ม `productCode=&status=&sort=&dir=`                                            | Filter/sort ผลค้นหา Job (ใช้ในหน้า Production)                                                                                                                                                                    |
+| `GET /admin/machines/:id/simulator/params`, `PATCH /admin/machines/:id/simulator/params`             | อ่าน/ปรับพารามิเตอร์ simulator ที่กำลังรัน (alarm/reject/offline probability, ช่วง cycle time/pressure/temperature, tick interval, startup scrap) แบบ live ผ่าน MQTT control channel — ใช้ในหน้า Simulator Tuning |
+| `GET /erp/machine-assets`, `PUT /erp/machine-assets/:assetId`, `DELETE /erp/machine-assets/:assetId` | Master data เครื่องจักรฝั่ง ERP — ชื่อ/รุ่น/ต้นทุน/รอบซ่อมบำรุง/vendor แก้ไขที่นี่ที่เดียว, ลบไม่ได้ถ้ายังมีเครื่องจักรใน Admin อ้างถึงอยู่ (409)                                                                 |
+| `GET /erp/skus`, `PUT /erp/skus/:productCode`, `DELETE /erp/skus/:productCode`                       | Master data ราคา/ต้นทุนวัตถุดิบต่อ SKU ฝั่ง ERP                                                                                                                                                                   |
+| `GET /erp/job-orders`, `PUT /erp/job-orders/:jobNumber`, `DELETE /erp/job-orders/:jobNumber`         | Mock job order (Job Number/SKU/จำนวนสั่ง) — สร้างอัตโนมัติทุกครั้งที่ job เริ่มผลิต, แก้ไขเองได้ — ใช้ในหน้า ERP; เทียบกับยอดผลิตจริงที่หน้า Production                                                           |
+| `GET /erp/summary?from=&to=`                                                                         | Job พร้อมราคา (revenue/cost/margin) และสรุปรวมตาม SKU/เครื่องจักร — ใช้ในหน้า Executive KPI                                                                                                                       |
+| `GET /maintenance/overview?from=&to=`                                                                | Running-hours-since-PM, downtime breakdown, และสรุปตามรุ่นเครื่อง — ใช้ในหน้า Performance/Machine Management                                                                                                      |
+| `WS /live`                                                                                           | push telemetry/job/alarm/status event แบบ real-time                                                                                                                                                               |
 
 ---
 
@@ -580,12 +537,17 @@ _ข้อ 2.5–2.7 (Modbus RTU/torn read/register limit) เป็น Future S
 | ประเด็น                       | สถานะตอนนี้ (3 เครื่อง)                                               | ทางขยับไป 200 เครื่อง                                                                                                                                                                                                                                                  |
 | ----------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | รับข้อมูลเครื่องใหม่          | Admin API/UI + MQTT wildcard subscription — เพิ่มได้ทันทีไม่ redeploy | เหมือนเดิม รองรับอยู่แล้ว ไม่ต้องแก้โค้ด                                                                                                                                                                                                                               |
-| Database เก็บ telemetry       | PostgreSQL ตารางเดียว, index บน `(machine_id, timestamp)`             | ที่ 200 เครื่อง เก็บทุก 2 วิ ≈ **8.6 ล้านแถว/วัน** — ต้องทำ **table partitioning by time** หรือย้ายไป **TimescaleDB** (extension บน Postgres ตัวเดิม ย้ายได้โดยแทบไม่แก้โค้ด backend) พร้อม retention policy (aggregate ข้อมูลเก่าเป็นค่าเฉลี่ยรายชั่วโมงแล้ว archive) |
-| Backup                        | `pg_dump` ตาม schedule                                                | ต้องใช้ **read replica** แยก I/O สำหรับ backup ไม่ให้แย่งกับ write path หลักที่รับข้อมูลสด                                                                                                                                                                             |
 | เครื่องจักรที่เชื่อมต่อไม่ได้ | สมมติว่าเชื่อมได้ทั้งหมด                                              | โรงงานจริงมีเครื่องเก่าที่เชื่อมไม่ได้ปนอยู่ — ต้องมี manual data entry fallback                                                                                                                                                                                       |
-| IT/OT Network                 | Backend รันในเครือข่ายเดียวกับ dashboard (prototype)                  | แยกผ่าน **Industrial DMZ** ตาม Purdue Model — OT (PLC/Simulator) ไม่เปิดให้ IT เข้าตรง ต้องผ่านด่านกลางนี้เสมอ (ระบบตอนนี้ถูกออกแบบให้อยู่ตำแหน่งด่านนี้พอดีอยู่แล้ว)                                                                                                  |
-| สิทธิ์ผู้ใช้งาน               | ไม่มี auth เลยใน prototype                                            | ต้องแยก role: Operator เห็นเฉพาะเครื่องที่ดูแล / Line Supervisor เห็นภาพรวมไลน์ / Maintenance เข้า OT zone / Management เข้า Executive dashboard ผ่าน IT zone / System Admin เข้า Industrial DMZ ผ่าน MFA + audit log                                                  |
+| Database เก็บ telemetry       | PostgreSQL ตารางเดียว, index บน `(machine_id, timestamp)`             | ที่ 200 เครื่อง เก็บทุก 2 วิ ≈ **8.6 ล้านแถว/วัน** — ต้องทำ **table partitioning by time** หรือย้ายไป **TimescaleDB** (extension บน Postgres ตัวเดิม ย้ายได้โดยแทบไม่แก้โค้ด backend) พร้อม retention policy (aggregate ข้อมูลเก่าเป็นค่าเฉลี่ยรายชั่วโมงแล้ว archive) |
 | Field-level protocol          | Simulator สวมบทบาทแทน PLC ทั้งก้อน ไม่มี Modbus จริง                  | เชื่อม PLC จริงผ่าน Modbus RTU/TCP หรือ OPC UA (EUROMAP 77) — มีข้อจำกัดเรื่อง torn read, register limit (125 ต่อ request) ที่ต้องจัดการเพิ่ม (ดู Gap ข้อ 2.5-2.7)                                                                                                     |
+
+## แนวทางที่จะทำเพิ่มได้แม้ 3 เครื่อง
+
+| GAP    | ประเด็น         | สถานะตอนนี้                                          | พัฒนาต่อจาก prototype                                                                                                                                                                                                 |
+| ------ | --------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ข้อ2.3 | Backup          | `pg_dump` ตาม schedule                               | ต้องใช้ **read replica** แยก I/O สำหรับ backup ไม่ให้แย่งกับ write path หลักที่รับข้อมูลสด                                                                                                                            |
+| ข้อ... | IT/OT Network   | Backend รันในเครือข่ายเดียวกับ dashboard (prototype) | แยกผ่าน **Industrial DMZ** ตาม Purdue Model — OT (PLC/Simulator) ไม่เปิดให้ IT เข้าตรง ต้องผ่านด่านกลางนี้เสมอ (ระบบตอนนี้ถูกออกแบบให้อยู่ตำแหน่งด่านนี้พอดีอยู่แล้ว)                                                 |
+| ข้อ... | สิทธิ์ผู้ใช้งาน | ไม่มี auth เลยใน prototype                           | ต้องแยก role: Operator เห็นเฉพาะเครื่องที่ดูแล / Line Supervisor เห็นภาพรวมไลน์ / Maintenance เข้า OT zone / Management เข้า Executive dashboard ผ่าน IT zone / System Admin เข้า Industrial DMZ ผ่าน MFA + audit log |
 
 ---
 
@@ -633,7 +595,7 @@ docker compose up -d
 
 คำสั่งเดียวจะสร้างและรันครบทั้งระบบ: Mosquitto, PostgreSQL (migrate schema อัตโนมัติ), Backend, Dashboard, และ Machine Simulator 3 เครื่อง (`IMM-01`, `IMM-02`, `IMM-03`) ที่ลงทะเบียนตัวเองและเริ่ม publish ข้อมูลทันที ไม่ต้องตั้งค่าอะไรเพิ่ม
 
-- Dashboard: http://localhost:5173 (Operator / History / Executive KPI / ERP / Chief Operator / Admin / Import / Audit Log) — System Health lives inside Admin now, not a separate page
+- Dashboard: http://localhost:5173 (Operation / Production / Performance / Executive KPI / Machine Management / Manual Import / Simulator Tuning / Admin / ERP) — System Health and Audit Log both live inside Admin now, not separate pages
 - Backend REST API: http://localhost:3000/api/v1
 - Backend health check: http://localhost:3000/health
 
@@ -696,7 +658,7 @@ docker compose down -v               # หยุด + ล้างข้อม�
 ```
 simulator/    Machine Simulator (Node.js + mqtt.js) — จำลองเครื่องฉีดพลาสติกหลาย instance
 backend/      Node.js/TypeScript — MQTT subscriber + REST API v1 + WebSocket + Prisma/PostgreSQL
-dashboard/    React + Vite — Operator / History / Executive KPI / ERP / Chief Operator / Admin views
+dashboard/    React + Vite — Operation / Production / Performance / Executive KPI / ERP / Machine Management / Admin / Simulator Tuning views
 mosquitto/    ค่าตั้งค่า MQTT broker
 architecture_diagram.svg   Architecture diagram (deliverable ข้อ 1)
 ```

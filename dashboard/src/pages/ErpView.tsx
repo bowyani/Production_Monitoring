@@ -1,25 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type ErpSummary, type JobOrder, type ProductSku, type ErpMachineAsset } from "../lib/api";
-import BlindSpotNote from "../components/BlindSpotNote";
-import { DivergingBarChart, HBarChart } from "../components/Bars";
+import { api, type ProductSku, type ErpMachineAsset, type ErpJobOrder } from "../lib/api";
 import { usePagination } from "../lib/usePagination";
 import Pagination from "../components/Pagination";
-
-function toLocalInputValue(d: Date) {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(
-    d.getMinutes()
-  )}`;
-}
 
 function thb(v: number | null, digits = 0) {
   return v == null ? "—" : `฿${v.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits })}`;
 }
-
-const card: React.CSSProperties = { border: "1px solid #d0d7de", borderRadius: 8, padding: 12 };
-const sectionTitle: React.CSSProperties = { fontSize: 12, color: "#57606a" };
-const bigValue: React.CSSProperties = { fontSize: 22, fontWeight: 700 };
 
 type AssetForm = {
   assetId: string;
@@ -65,16 +52,14 @@ function toAssetForm(a: ErpMachineAsset): AssetForm {
   };
 }
 
+type OrderForm = { jobNumber: string; productCode: string; quantityOrdered: string };
+const emptyOrderForm: OrderForm = { jobNumber: "", productCode: "", quantityOrdered: "" };
+
 export default function ErpView() {
-  const [from, setFrom] = useState(() => toLocalInputValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)));
-  const [to, setTo] = useState(() => toLocalInputValue(new Date()));
-  const [summary, setSummary] = useState<ErpSummary | null>(null);
-  const [orders, setOrders] = useState<JobOrder[]>([]);
   const [skus, setSkus] = useState<ProductSku[]>([]);
   const [assets, setAssets] = useState<ErpMachineAsset[]>([]);
+  const [orders, setOrders] = useState<ErpJobOrder[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [manualMachineCount, setManualMachineCount] = useState(0);
-  const [inactiveMachineCount, setInactiveMachineCount] = useState(0);
 
   const [editCode, setEditCode] = useState("");
   const [editDesc, setEditDesc] = useState("");
@@ -89,19 +74,17 @@ export default function ErpView() {
   // silently overwrite an existing asset if the user typed a duplicate ID.
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
 
+  const [orderForm, setOrderForm] = useState<OrderForm>(emptyOrderForm);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [editingOrderNumber, setEditingOrderNumber] = useState<string | null>(null);
+
   async function load() {
     setError(null);
     try {
-      const [s, o, sk, ma] = await Promise.all([
-        api.getErpSummary(new Date(from).toISOString(), new Date(to).toISOString()),
-        api.getJobOrders({ from: new Date(from).toISOString(), to: new Date(to).toISOString(), limit: "200" }),
-        api.getSkus(),
-        api.getMachineAssets(),
-      ]);
-      setSummary(s);
-      setOrders(o);
+      const [sk, ma, jo] = await Promise.all([api.getSkus(), api.getMachineAssets(), api.getErpJobOrders()]);
       setSkus(sk);
       setAssets(ma);
+      setOrders(jo);
     } catch (err) {
       setError(err instanceof Error ? err.message : "failed to load ERP data");
     }
@@ -109,14 +92,6 @@ export default function ErpView() {
 
   useEffect(() => {
     load();
-    api
-      .adminListMachines()
-      .then((list) => {
-        setManualMachineCount(list.filter((m) => m.dataSource === "MANUAL").length);
-        setInactiveMachineCount(list.filter((m) => !m.isActive).length);
-      })
-      .catch(console.error);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function editAsset(a: ErpMachineAsset) {
@@ -169,7 +144,7 @@ export default function ErpView() {
   }
 
   async function removeAsset(assetId: string) {
-    if (!confirm(`Remove ERP asset ${assetId}? This only works if it isn't registered as a machine in Admin.`)) return;
+    if (!confirm(`Remove ERP asset ${assetId}? This only works if it isn't registered as a machine in Machine Management.`)) return;
     const res = await api.deleteMachineAsset(assetId);
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -218,6 +193,42 @@ export default function ErpView() {
     await load();
   }
 
+  function editOrder(o: ErpJobOrder) {
+    setOrderForm({ jobNumber: o.jobNumber, productCode: o.productCode, quantityOrdered: String(o.quantityOrdered) });
+    setEditingOrderNumber(o.jobNumber);
+  }
+
+  function resetOrderForm() {
+    setOrderForm(emptyOrderForm);
+    setEditingOrderNumber(null);
+  }
+
+  async function saveOrder(e: React.FormEvent) {
+    e.preventDefault();
+    const jobNumber = orderForm.jobNumber.trim();
+    if (!jobNumber || !orderForm.productCode.trim() || orderForm.quantityOrdered === "") return;
+    setError(null);
+    setSavingOrder(true);
+    try {
+      await api.setErpJobOrder(jobNumber, {
+        productCode: orderForm.productCode.trim(),
+        quantityOrdered: Number(orderForm.quantityOrdered),
+      });
+      resetOrderForm();
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "failed to save job order");
+    } finally {
+      setSavingOrder(false);
+    }
+  }
+
+  async function removeOrder(jobNumber: string) {
+    if (!confirm(`Remove job order ${jobNumber}?`)) return;
+    await api.deleteErpJobOrder(jobNumber);
+    await load();
+  }
+
   const assetsPage = usePagination(assets, 8);
   const skusPage = usePagination(skus, 10);
   const ordersPage = usePagination(orders, 10);
@@ -225,135 +236,21 @@ export default function ErpView() {
   return (
     <div className="app-shell">
       <div className="page-title">
-        <h1>ERP (Mock) — Job Orders &amp; SKU Pricing</h1>
+        <h1>ERP (Mock) — Master Data</h1>
         <div className="page-subtitle">
-          Level 4 view (see README Automation Pyramid): prices below are a small admin-editable price book, not a
-          real ERP integration — good enough to show where revenue, cost, and margin actually sit.
+          Level 4 view (see README Automation Pyramid): machine specs, SKU prices, and job orders — a small
+          admin-editable master-data set, not a real ERP integration. Revenue/margin analysis using this data
+          moved to <Link to="/kpi">Executive KPI</Link>.
         </div>
       </div>
-
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          load();
-        }}
-        className="toolbar"
-      >
-        <label>
-          From <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
-        </label>
-        <label>
-          To <input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} />
-        </label>
-        <button type="submit">Load</button>
-      </form>
       {error && <div className="notice notice-error">{error}</div>}
-
-      <BlindSpotNote manualCount={manualMachineCount} inactiveCount={inactiveMachineCount} />
-
-      {summary && (
-        <>
-          <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
-            <div style={card}>
-              <div style={sectionTitle}>Revenue</div>
-              <div style={bigValue}>{thb(summary.totals.revenueThb)}</div>
-            </div>
-            <div style={card}>
-              <div style={sectionTitle}>Material Cost</div>
-              <div style={bigValue}>{thb(summary.totals.materialCostThb)}</div>
-            </div>
-            <div style={card}>
-              <div style={sectionTitle}>Labor Cost</div>
-              <div style={bigValue}>{thb(summary.totals.laborCostThb)}</div>
-            </div>
-            <div style={{ ...card, borderColor: (summary.totals.marginThb ?? 0) < 0 ? "#cf222e" : "#d0d7de" }}>
-              <div style={sectionTitle}>Gross Margin</div>
-              <div style={{ ...bigValue, color: (summary.totals.marginThb ?? 0) < 0 ? "#cf222e" : undefined }}>
-                {thb(summary.totals.marginThb)}
-              </div>
-            </div>
-            <div style={card}>
-              <div style={sectionTitle}>Margin / Runtime Hour</div>
-              <div style={bigValue}>{thb(summary.totals.marginPerHourThb, 1)}</div>
-            </div>
-          </section>
-
-          {summary.unpricedJobCount > 0 && (
-            <div className="notice notice-warn" style={{ display: "inline-block" }}>
-              ⚠ {summary.unpricedJobCount} job order(s) use a product code with no mock price set — excluded from
-              the revenue/margin totals above. Add a price below to include them.
-            </div>
-          )}
-
-          <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-            <div>
-              <h2>Margin by SKU (฿/hr, worst first)</h2>
-              <p style={{ fontSize: 12, color: "#57606a" }}>
-                Lowest margin-per-runtime-hour first — the SKU at the top is the current bottleneck: it ties up
-                machine time for the least (or negative) return.
-              </p>
-              <DivergingBarChart
-                data={summary.bySku.map((r) => ({
-                  label: r.key,
-                  value: r.marginPerHourThb ?? 0,
-                  sublabel: `${r.jobCount} job(s)`,
-                  display: r.marginPerHourThb == null ? "—" : undefined,
-                }))}
-                formatValue={(v) => thb(v, 1)}
-              />
-            </div>
-            <div>
-              <h2>Margin by Machine (฿/hr, worst first)</h2>
-              <DivergingBarChart
-                data={summary.byMachine.map((r) => ({
-                  label: r.key,
-                  value: r.marginPerHourThb ?? 0,
-                  sublabel: `${r.jobCount} job(s)`,
-                  display: r.marginPerHourThb == null ? "—" : undefined,
-                }))}
-                formatValue={(v) => thb(v, 1)}
-              />
-            </div>
-          </section>
-
-          <section>
-            <h2>Revenue by SKU</h2>
-            <HBarChart
-              data={[...summary.bySku].reverse().map((r) => ({
-                label: r.key,
-                value: r.revenueThb ?? 0,
-                display: r.revenueThb == null ? "—" : undefined,
-              }))}
-              color="#0969da"
-              formatValue={(v) => thb(v)}
-            />
-          </section>
-
-          <section>
-            <h2>Reject material loss by SKU</h2>
-            <p style={{ fontSize: 12, color: "#57606a" }}>
-              Material consumed by rejected/scrap units that earned no revenue — cost hiding inside the reject
-              rate.
-            </p>
-            <HBarChart
-              data={[...summary.bySku].reverse().map((r) => ({
-                label: r.key,
-                value: r.rejectMaterialLossThb ?? 0,
-                display: r.rejectMaterialLossThb == null ? "—" : undefined,
-              }))}
-              color="#cf222e"
-              formatValue={(v) => thb(v)}
-            />
-          </section>
-        </>
-      )}
 
       <section>
         <h2>Machine Assets (mock ERP master data)</h2>
         <p style={{ fontSize: 12, color: "#57606a" }}>
-          Single source of truth for machine specs. Admin registers a machine by picking a row here — it no
-          longer accepts these fields as free text, which used to let the same physical machine get
-          registered twice with mismatched specs.
+          Single source of truth for machine specs. Machine Management registers a machine by picking a row
+          here — it no longer accepts these fields as free text, which used to let the same physical machine
+          get registered twice with mismatched specs.
         </p>
         <form onSubmit={saveAsset} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
           <input
@@ -407,7 +304,7 @@ export default function ErpView() {
           <input
             value={assetForm.location}
             onChange={(e) => setAssetForm({ ...assetForm, location: e.target.value })}
-            placeholder="Location (e.g. Line 3, Bay 12)"
+            placeholder="Location (e.g. Building A)"
             style={{ padding: 6, width: 160 }}
           />
           <input
@@ -501,9 +398,10 @@ export default function ErpView() {
         </div>
         <p style={{ fontSize: 13, color: "#57606a" }}>
           Specs can be edited here at any time, even after the asset is registered as a machine in{" "}
-          <Link to="/admin">Admin</Link> — Admin always reads the current values, so there's nothing to keep
-          in sync. An asset can't be removed while a machine still references it (this prototype has no
-          "unregister" action in Admin, only activate/deactivate).
+          <Link to="/chief-operator">Machine Management</Link> — it always reads the current values, so
+          there's nothing to keep in sync. An asset can't be removed while a machine still references it
+          (this prototype has no "unregister" action, only activate/deactivate). Startup Scrap is a live
+          simulator behavior, not a spec — adjust it on <Link to="/simulator-tuning">Simulator Tuning</Link>.
         </p>
       </section>
 
@@ -602,45 +500,78 @@ export default function ErpView() {
 
       <section>
         <h2>Job Orders</h2>
+        <p style={{ fontSize: 12, color: "#57606a" }}>
+          Mock "order obtained from ERP" — Job Number, SKU, and quantity ordered only. A row is created
+          automatically whenever a production job starts (matching its Job Number/SKU), so this stays
+          populated without hand-keying it; you can also add/edit one directly below. Actual good/reject
+          quantities produced live on the job itself — see <Link to="/production">Production</Link> for the
+          ordered-vs-produced comparison.
+        </p>
+        <form onSubmit={saveOrder} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+          <input
+            value={orderForm.jobNumber}
+            onChange={(e) => setOrderForm({ ...orderForm, jobNumber: e.target.value })}
+            placeholder="Job Number"
+            style={{ padding: 6, width: 220 }}
+            required
+            disabled={editingOrderNumber !== null}
+          />
+          <input
+            value={orderForm.productCode}
+            onChange={(e) => setOrderForm({ ...orderForm, productCode: e.target.value })}
+            placeholder="SKU / Product Code"
+            style={{ padding: 6, width: 160 }}
+            required
+          />
+          <input
+            value={orderForm.quantityOrdered}
+            onChange={(e) => setOrderForm({ ...orderForm, quantityOrdered: e.target.value })}
+            placeholder="Quantity"
+            type="number"
+            min="0"
+            step="1"
+            style={{ padding: 6, width: 110 }}
+            required
+          />
+          <button type="submit" disabled={savingOrder}>
+            {editingOrderNumber !== null ? "Update" : "Add"} order
+          </button>
+          {orderForm.jobNumber && (
+            <button type="button" onClick={resetOrderForm}>
+              Cancel
+            </button>
+          )}
+        </form>
         <div className="table-card">
           <div className="table-scroll">
             <table>
               <thead>
                 <tr>
                   <th>Job Number</th>
-                  <th>Machine</th>
                   <th>SKU</th>
-                  <th>Started</th>
-                  <th>Status</th>
-                  <th>Good</th>
-                  <th>Reject</th>
-                  <th>Revenue</th>
-                  <th>Material Cost</th>
-                  <th>Labor Cost</th>
-                  <th>Margin</th>
+                  <th>Quantity</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {ordersPage.pageItems.map((o) => (
                   <tr key={o.jobNumber}>
                     <td>{o.jobNumber}</td>
-                    <td>{o.machineId}</td>
                     <td>{o.productCode}</td>
-                    <td>{new Date(o.startTime).toLocaleString()}</td>
-                    <td>{o.status}</td>
-                    <td>{o.goodQty}</td>
-                    <td>{o.rejectQty}</td>
-                    <td>{thb(o.revenueThb, 2)}</td>
-                    <td>{thb(o.materialCostThb, 2)}</td>
-                    <td>{thb(o.laborCostThb, 2)}</td>
-                    <td style={{ color: o.marginThb != null && o.marginThb < 0 ? "#cf222e" : undefined }}>
-                      {thb(o.marginThb, 2)}
+                    <td>{o.quantityOrdered}</td>
+                    <td style={{ display: "flex", gap: 4 }}>
+                      <button type="button" onClick={() => editOrder(o)}>
+                        Edit
+                      </button>
+                      <button type="button" onClick={() => removeOrder(o.jobNumber)}>
+                        Remove
+                      </button>
                     </td>
                   </tr>
                 ))}
                 {orders.length === 0 && (
                   <tr className="row-empty">
-                    <td colSpan={11}>No job orders in this window.</td>
+                    <td colSpan={4}>No job orders yet.</td>
                   </tr>
                 )}
               </tbody>
