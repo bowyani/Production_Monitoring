@@ -122,18 +122,31 @@ export default function KpiView() {
       </form>
       {error && <div className="notice notice-error">{error}</div>}
 
-      {(manualMachineCount > 0 || inactiveMachineCount > 0) && (
-        <section>
-          <h2 style={{ marginBottom: 8 }}>Fleet coverage</h2>
-          <DonutChart
-            data={[
-              { key: "live", label: "Live (MQTT, included)", value: liveMachineCount, color: "#1a7f37" },
-              { key: "manual", label: "MANUAL (no live data)", value: manualMachineCount, color: "#9a6700" },
-              { key: "deactivated", label: "Deactivated", value: inactiveMachineCount, color: "#57606a" },
-            ]}
-          />
-        </section>
-      )}
+      <section>
+        <h2 style={{ marginBottom: 8 }}>Fleet coverage</h2>
+        <DonutChart
+          data={[
+            {
+              key: "live",
+              label: "Live (MQTT, included)",
+              value: liveMachineCount,
+              color: "#1a7f37",
+            },
+            {
+              key: "manual",
+              label: "MANUAL (no live data)",
+              value: manualMachineCount,
+              color: "#9a6700",
+            },
+            {
+              key: "deactivated",
+              label: "Deactivated",
+              value: inactiveMachineCount,
+              color: "#57606a",
+            },
+          ]}
+        />
+      </section>
 
       {summary && (
         <>
@@ -315,8 +328,8 @@ export default function KpiView() {
             <section>
               <h2>Reject material loss by SKU</h2>
               <p style={{ fontSize: 12, color: "#57606a" }}>
-                Material consumed by rejected/scrap units that earned no revenue — cost hiding inside the
-                reject rate.
+                Material consumed by rejected/scrap units that earned no revenue
+                — cost hiding inside the reject rate.
               </p>
               <HBarChart
                 data={[...financials.bySku].reverse().map((r) => ({
@@ -375,11 +388,11 @@ export default function KpiView() {
             </div>
             <p style={{ fontSize: 13, color: "#57606a", maxWidth: 700 }}>
               Performance/OEE show "—" for machines without a configured Target
-              Cycle Time (set it in ERP). QC hold rate isn't shown — there's
-              no "QC hold" concept in the current data model. Reject rate,
-              runtime, cycle time, and energy detail live on{" "}
-              <strong>Performance</strong> — this page stays focused on money
-              and overall equipment effectiveness.
+              Cycle Time (set it in ERP). QC hold rate isn't shown — there's no
+              "QC hold" concept in the current data model. Reject rate, runtime,
+              cycle time, and energy detail live on <strong>Performance</strong>{" "}
+              — this page stays focused on money and overall equipment
+              effectiveness.
             </p>
           </section>
 
@@ -388,9 +401,9 @@ export default function KpiView() {
             <p style={{ fontSize: 13, color: "#57606a", maxWidth: 700 }}>
               Standard OEE decomposition (ISO 22400-2), computed per machine
               over the selected From/To window, then rolled up. Financial
-              figures come from the mock ERP price book:
-              revenue = good qty × SKU price, cost = material (all produced
-              units) + labor (runtime × $/hr from ERP).
+              figures come from the mock ERP price book: revenue = good qty ×
+              SKU price, cost = material (all produced units) + labor (runtime ×
+              $/hr from ERP).
             </p>
             <ul
               style={{

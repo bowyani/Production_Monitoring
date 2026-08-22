@@ -1,5 +1,10 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { api, type MaintenanceOverview, type MaintenanceReason, type KpiSummary } from "../lib/api";
+import {
+  api,
+  type MaintenanceOverview,
+  type MaintenanceReason,
+  type KpiSummary,
+} from "../lib/api";
 import BlindSpotNote from "../components/BlindSpotNote";
 import { DonutChart } from "../components/Bars";
 import { usePagination } from "../lib/usePagination";
@@ -95,7 +100,9 @@ export default function PerformanceView() {
       ]);
       setOverview(overviewResult);
       setKpi(kpiResult);
-      setDowntimeModel((cur) => cur ?? overviewResult.byModel[0]?.machineModel ?? null);
+      setDowntimeModel(
+        (cur) => cur ?? overviewResult.byModel[0]?.machineModel ?? null,
+      );
     } catch (err) {
       setError(
         err instanceof Error
@@ -123,18 +130,34 @@ export default function PerformanceView() {
   // overview.machines (MachineMaintenance), which does, by machineId.
   const modelByMachineId = useMemo(() => {
     const map = new Map<string, string>();
-    for (const m of overview?.machines ?? []) map.set(m.machineId, m.machineModel ?? UNSPECIFIED_MODEL);
+    for (const m of overview?.machines ?? [])
+      map.set(m.machineId, m.machineModel ?? UNSPECIFIED_MODEL);
     return map;
   }, [overview]);
 
   const productionByModel = useMemo(() => {
-    const groups = new Map<string, { runtimeHours: number; cycleWeighted: number; energyKwh: number | null; machineIds: Set<string> }>();
+    const groups = new Map<
+      string,
+      {
+        runtimeHours: number;
+        cycleWeighted: number;
+        energyKwh: number | null;
+        machineIds: Set<string>;
+      }
+    >();
     for (const m of kpi?.machines ?? []) {
       const model = modelByMachineId.get(m.machineId) ?? UNSPECIFIED_MODEL;
-      const g = groups.get(model) ?? { runtimeHours: 0, cycleWeighted: 0, energyKwh: null, machineIds: new Set() };
+      const g = groups.get(model) ?? {
+        runtimeHours: 0,
+        cycleWeighted: 0,
+        energyKwh: null,
+        machineIds: new Set(),
+      };
       g.runtimeHours += m.runtimeHours;
-      if (m.avgCycleTimeSec != null) g.cycleWeighted += m.avgCycleTimeSec * m.runtimeHours;
-      if (m.estimatedEnergyKwh != null) g.energyKwh = (g.energyKwh ?? 0) + m.estimatedEnergyKwh;
+      if (m.avgCycleTimeSec != null)
+        g.cycleWeighted += m.avgCycleTimeSec * m.runtimeHours;
+      if (m.estimatedEnergyKwh != null)
+        g.energyKwh = (g.energyKwh ?? 0) + m.estimatedEnergyKwh;
       g.machineIds.add(m.machineId);
       groups.set(model, g);
     }
@@ -143,7 +166,8 @@ export default function PerformanceView() {
         model,
         machineCount: g.machineIds.size,
         runtimeHours: g.runtimeHours,
-        avgCycleTimeSec: g.runtimeHours > 0 ? g.cycleWeighted / g.runtimeHours : null,
+        avgCycleTimeSec:
+          g.runtimeHours > 0 ? g.cycleWeighted / g.runtimeHours : null,
         estimatedEnergyKwh: g.energyKwh,
       }))
       .sort((a, b) => a.model.localeCompare(b.model));
@@ -173,7 +197,8 @@ export default function PerformanceView() {
 
   const productionPage = usePagination(productionByModel, 10);
   const byModelPage = usePagination(overview?.byModel ?? [], 10);
-  const downtimeSelected = overview?.byModel.find((r) => r.machineModel === downtimeModel) ?? null;
+  const downtimeSelected =
+    overview?.byModel.find((r) => r.machineModel === downtimeModel) ?? null;
 
   return (
     <div className="app-shell">
@@ -214,6 +239,225 @@ export default function PerformanceView() {
       {overview && (
         <>
           <section>
+            <h2>Downtime — Intentional vs Error vs Offline</h2>
+
+            <label>
+              Model{" "}
+              <select
+                value={downtimeModel ?? ""}
+                onChange={(e) => setDowntimeModel(e.target.value)}
+              >
+                {(overview.byModel ?? []).map((r) => (
+                  <option key={r.machineModel} value={r.machineModel}>
+                    {r.machineModel}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {downtimeSelected ? (
+              <DonutChart
+                data={[
+                  {
+                    key: "stop",
+                    label: "Intentional",
+                    value: downtimeSelected.totalIntentionalDowntimeHours,
+                    color: "#9a6700",
+                  },
+                  {
+                    key: "alarm",
+                    label: "Error",
+                    value: downtimeSelected.totalErrorDowntimeHours,
+                    color: "#cf222e",
+                  },
+                  {
+                    key: "offline",
+                    label: "Offline",
+                    value: downtimeSelected.totalOfflineHours,
+                    color: "#57606a",
+                  },
+                  {
+                    key: "other",
+                    label: "Other",
+                    value: downtimeSelected.totalOtherDowntimeHours,
+                    color: "#8250df",
+                  },
+                ]}
+                formatValue={(v) => `${v.toFixed(1)}h`}
+              />
+            ) : (
+              <p style={{ fontSize: 13, color: "#57606a" }}>
+                No models to show yet.
+              </p>
+            )}
+            <div className="table-card" style={{ padding: 0 }}>
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th>Meaning</th>
+                      <th>Counted as</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {STATUS_LEGEND.map((row) => (
+                      <tr key={row.status}>
+                        <td>
+                          <code>{row.status}</code>
+                        </td>
+                        <td style={{ fontSize: 13 }}>{row.meaning}</td>
+                        <td style={{ fontSize: 13 }}>{row.counts}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <h2>Summary by Model — which model tends to have problems</h2>
+            <div className="table-card">
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Model</th>
+                      <th>Machines</th>
+                      <th>Overdue PM</th>
+                      <th>Error Downtime</th>
+                      <th>Intentional Downtime</th>
+                      <th>Offline</th>
+                      <th>Other</th>
+                      <th>Alarms</th>
+                      <th>Top Reasons</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {byModelPage.pageItems.map((r) => {
+                      const isExpanded = expandedModel === r.machineModel;
+                      return (
+                        <Fragment key={r.machineModel}>
+                          <tr
+                            style={
+                              isExpanded
+                                ? { background: "var(--color-accent-subtle)" }
+                                : undefined
+                            }
+                          >
+                            <td>
+                              <strong>{r.machineModel}</strong>
+                            </td>
+                            <td>{r.machineCount}</td>
+                            <td
+                              style={{
+                                color:
+                                  r.machinesOverdue > 0 ? "#cf222e" : undefined,
+                              }}
+                            >
+                              {r.machinesOverdue}
+                            </td>
+                            <td
+                              style={{
+                                color:
+                                  r.totalErrorDowntimeHours > 0
+                                    ? "#cf222e"
+                                    : undefined,
+                              }}
+                            >
+                              {hrs(r.totalErrorDowntimeHours)}
+                            </td>
+                            <td>{hrs(r.totalIntentionalDowntimeHours)}</td>
+                            <td>{hrs(r.totalOfflineHours)}</td>
+                            <td>{hrs(r.totalOtherDowntimeHours)}</td>
+                            <td>{r.totalAlarmCount}</td>
+                            <td style={{ fontSize: 13 }}>
+                              <ReasonsList reasons={r.topReasons} />
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedModel(
+                                    isExpanded ? null : r.machineModel,
+                                  )
+                                }
+                              >
+                                {isExpanded ? "Hide machines" : "View machines"}
+                              </button>
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr>
+                              <td
+                                colSpan={10}
+                                style={{
+                                  background: "var(--color-canvas)",
+                                  padding: 12,
+                                }}
+                              >
+                                <table style={{ width: "100%" }}>
+                                  <thead>
+                                    <tr>
+                                      <th>Machine</th>
+                                      <th>Runtime (h)</th>
+                                      <th>Avg Cycle (s)</th>
+                                      <th>Energy (kWh)</th>
+                                      <th>Alarm Count</th>
+                                      <th>Top Reasons</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {expandedMachines.map((m) => (
+                                      <tr key={m.machineId}>
+                                        <td>
+                                          {m.machineId} — {m.machineName}
+                                        </td>
+                                        <td>{num(m.runtimeHours, 2)}</td>
+                                        <td>{num(m.avgCycleTimeSec)}</td>
+                                        <td>{num(m.estimatedEnergyKwh)}</td>
+                                        <td>{m.alarmCount}</td>
+                                        <td style={{ fontSize: 13 }}>
+                                          <ReasonsList reasons={m.topReasons} />
+                                        </td>
+                                      </tr>
+                                    ))}
+                                    {expandedMachines.length === 0 && (
+                                      <tr className="row-empty">
+                                        <td colSpan={6}>
+                                          No machines for this model.
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                    {overview.byModel.length === 0 && (
+                      <tr className="row-empty">
+                        <td colSpan={10}>No machines to summarize.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <Pagination
+                page={byModelPage.page}
+                pageCount={byModelPage.pageCount}
+                total={byModelPage.total}
+                pageSize={byModelPage.pageSize}
+                onPageChange={byModelPage.setPage}
+              />
+            </div>
+          </section>
+
+          <section>
             <h2>Production Detail — Cycle Time, Runtime &amp; Energy</h2>
             <div className="table-card">
               <div className="table-scroll">
@@ -253,180 +497,6 @@ export default function PerformanceView() {
                 total={productionPage.total}
                 pageSize={productionPage.pageSize}
                 onPageChange={productionPage.setPage}
-              />
-            </div>
-          </section>
-
-          <section>
-            <h2>Downtime — Intentional vs Error vs Offline</h2>
-
-            <div className="table-card" style={{ padding: 0 }}>
-              <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Status</th>
-                      <th>Meaning</th>
-                      <th>Counted as</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {STATUS_LEGEND.map((row) => (
-                      <tr key={row.status}>
-                        <td>
-                          <code>{row.status}</code>
-                        </td>
-                        <td style={{ fontSize: 13 }}>{row.meaning}</td>
-                        <td style={{ fontSize: 13 }}>{row.counts}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <label>
-              Model{" "}
-              <select value={downtimeModel ?? ""} onChange={(e) => setDowntimeModel(e.target.value)}>
-                {(overview.byModel ?? []).map((r) => (
-                  <option key={r.machineModel} value={r.machineModel}>
-                    {r.machineModel}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {downtimeSelected ? (
-              <DonutChart
-                data={[
-                  { key: "stop", label: "Intentional", value: downtimeSelected.totalIntentionalDowntimeHours, color: "#9a6700" },
-                  { key: "alarm", label: "Error", value: downtimeSelected.totalErrorDowntimeHours, color: "#cf222e" },
-                  { key: "offline", label: "Offline", value: downtimeSelected.totalOfflineHours, color: "#57606a" },
-                  { key: "other", label: "Other", value: downtimeSelected.totalOtherDowntimeHours, color: "#8250df" },
-                ]}
-                formatValue={(v) => `${v.toFixed(1)}h`}
-              />
-            ) : (
-              <p style={{ fontSize: 13, color: "#57606a" }}>No models to show yet.</p>
-            )}
-          </section>
-
-          <section>
-            <h2>Summary by Model — which model tends to have problems</h2>
-            <div className="table-card">
-              <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Model</th>
-                      <th>Machines</th>
-                      <th>Overdue PM</th>
-                      <th>Error Downtime</th>
-                      <th>Intentional Downtime</th>
-                      <th>Offline</th>
-                      <th>Other</th>
-                      <th>Alarms</th>
-                      <th>Top Reasons</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {byModelPage.pageItems.map((r) => {
-                      const isExpanded = expandedModel === r.machineModel;
-                      return (
-                        <Fragment key={r.machineModel}>
-                          <tr style={isExpanded ? { background: "var(--color-accent-subtle)" } : undefined}>
-                            <td>
-                              <strong>{r.machineModel}</strong>
-                            </td>
-                            <td>{r.machineCount}</td>
-                            <td
-                              style={{
-                                color:
-                                  r.machinesOverdue > 0 ? "#cf222e" : undefined,
-                              }}
-                            >
-                              {r.machinesOverdue}
-                            </td>
-                            <td
-                              style={{
-                                color:
-                                  r.totalErrorDowntimeHours > 0
-                                    ? "#cf222e"
-                                    : undefined,
-                              }}
-                            >
-                              {hrs(r.totalErrorDowntimeHours)}
-                            </td>
-                            <td>{hrs(r.totalIntentionalDowntimeHours)}</td>
-                            <td>{hrs(r.totalOfflineHours)}</td>
-                            <td>{hrs(r.totalOtherDowntimeHours)}</td>
-                            <td>{r.totalAlarmCount}</td>
-                            <td style={{ fontSize: 13 }}>
-                              <ReasonsList reasons={r.topReasons} />
-                            </td>
-                            <td>
-                              <button type="button" onClick={() => setExpandedModel(isExpanded ? null : r.machineModel)}>
-                                {isExpanded ? "Hide machines" : "View machines"}
-                              </button>
-                            </td>
-                          </tr>
-                          {isExpanded && (
-                            <tr>
-                              <td colSpan={10} style={{ background: "var(--color-canvas)", padding: 12 }}>
-                                <table style={{ width: "100%" }}>
-                                  <thead>
-                                    <tr>
-                                      <th>Machine</th>
-                                      <th>Runtime (h)</th>
-                                      <th>Avg Cycle (s)</th>
-                                      <th>Energy (kWh)</th>
-                                      <th>Alarm Count</th>
-                                      <th>Top Reasons</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {expandedMachines.map((m) => (
-                                      <tr key={m.machineId}>
-                                        <td>
-                                          {m.machineId} — {m.machineName}
-                                        </td>
-                                        <td>{num(m.runtimeHours, 2)}</td>
-                                        <td>{num(m.avgCycleTimeSec)}</td>
-                                        <td>{num(m.estimatedEnergyKwh)}</td>
-                                        <td>{m.alarmCount}</td>
-                                        <td style={{ fontSize: 13 }}>
-                                          <ReasonsList reasons={m.topReasons} />
-                                        </td>
-                                      </tr>
-                                    ))}
-                                    {expandedMachines.length === 0 && (
-                                      <tr className="row-empty">
-                                        <td colSpan={6}>No machines for this model.</td>
-                                      </tr>
-                                    )}
-                                  </tbody>
-                                </table>
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-                    {overview.byModel.length === 0 && (
-                      <tr className="row-empty">
-                        <td colSpan={10}>No machines to summarize.</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <Pagination
-                page={byModelPage.page}
-                pageCount={byModelPage.pageCount}
-                total={byModelPage.total}
-                pageSize={byModelPage.pageSize}
-                onPageChange={byModelPage.setPage}
               />
             </div>
           </section>

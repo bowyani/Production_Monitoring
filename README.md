@@ -5,24 +5,29 @@ Prototype ระบบ Production Monitoring สำหรับเครื่�
 # Table of Contents
 
 - [Assumption](#assumption)
-  - [Business](#business)
-  - [Technology](#technology)
-  - [Field](#field)
-- [Solution](#Solution)
+  - [Process](#process)
+  - [GAP ที่โจทย์ไม่ได้บอก](#gap-ที่โจทย์ไม่ได้บอก)
+    - [Business](#business)
+    - [Dev](#dev)
+    - [Engineering](#engineering)
+  - [Use Case](#use-case)
+- [Solution](#solution)
   - [สมมติฐานและข้อจำกัด](#สมมติฐานและข้อจำกัด)
+    - [สถานะ (Status) ของเครื่องจักรมีความหมายว่าอะไรบ้าง](#สถานะ-status-ของเครื่องจักรมีความหมายว่าอะไรบ้าง)
+  - [Existing Technology](#existing-technology)
   - [Technology ที่เลือกใช้และเหตุผล](#technology-ที่เลือกใช้และเหตุผล)
   - [Architecture Diagram](#architecture-diagram)
   - [Data Flow](#data-flow)
-    - [สถานะ (Status) ของเครื่องจักรมีความหมายว่าอะไรบ้าง](#สถานะ-status-ของเครื่องจักรมีความหมายว่าอะไรบ้าง)
   - [Database Structure](#database-structure)
     - [ERD](#erd)
   - [API / Message Format](#api--message-format)
     - [MQTT (Simulator → Backend)](#mqtt-simulator--backend)
     - [REST API (`/api/v1`, Backend → Dashboard)](#rest-api-apiv1-backend--dashboard)
-  - [Design Rationale — เหตุผลเชิงลึกเทียบกับทางเลือกอื่น](#design-rationale--เหตุผลเชิงลึกเทียบกับทางเลือกอื่น)
-    - [Crosswalk: Design ตอบ Gap ข้อไหนบ้าง](#crosswalk-design-ตอบ-gap-ข้อไหนบ้าง)
   - [แนวทางขยายจาก 3 เครื่องไปยัง 200 เครื่อง](#แนวทางขยายจาก-3-เครื่องไปยัง-200-เครื่อง)
+  - [แนวทางที่จะทำเพิ่มได้แม้ 3 เครื่อง](#แนวทางที่จะทำเพิ่มได้แม้-3-เครื่อง)
 - [Future Vision: สู่ Unmanned (Lights-Out) Operation](#future-vision-สู่-unmanned-lights-out-operation)
+  - [กระบวนการที่เป็นไอเดีย](#กระบวนการที่เป็นไอเดีย)
+  - [ข้อจำกัดข้ามกระบวนการ (Cross-cutting Limitations)](#ข้อจำกัดข้ามกระบวนการ-cross-cutting-limitations)
 - [Quick Start](#quick-start)
 - [Ref](#ref)
   - [เอกสารอื่นที่เกี่ยวข้อง](#เอกสารอื่นที่เกี่ยวข้อง)
@@ -32,7 +37,7 @@ Prototype ระบบ Production Monitoring สำหรับเครื่�
 
 # Assumption
 
-### Process
+## Process
 
 1. สภาพโรงงานวันนี้ (As-Is)
 
@@ -50,12 +55,12 @@ Prototype ระบบ Production Monitoring สำหรับเครื่�
 
 ผู้บริหารและหัวหน้าไลน์เห็นสถานะเครื่องจักรทุกเครื่องพร้อมกันแบบ real-time แทนที่จะรอรายงานสรุปตอนสิ้นกะ รู้ทันทีที่เครื่องจักรมีปัญหาหรือหยุดทำงานโดยไม่ได้วางแผน ลดเวลาที่เครื่องจักรหยุดโดยไม่รู้ตัว (Unplanned Downtime) ข้อมูลที่เคยจดด้วยมือถูกแทนที่ด้วยข้อมูลจากเครื่องจักรโดยตรง ลดความผิดพลาด และค้นหาประวัติการผลิตย้อนหลังด้วย Job Number ได้ทันที
 
-### GAP ที่โจทย์ไม่ได้บอก
+## GAP ที่โจทย์ไม่ได้บอก
+
+### Business
 
 | #   | ปัญหาที่พบ | แนวทางแก้ไข / สมมติฐานใน Prototype | [อ้างอิงมาตรฐาน](#มาตรฐานอ้างอิงทั้งหมด) |
 | --- | ---------- | ---------------------------------- | ---------------------------------------- |
-
-| **Business** | | | |
 | 1.1 | โจทย์ไม่ได้ระบุว่าปัจจุบันวางแผนการผลิต (Production Scheduling) ด้วยระบบใด | Job Number สร้างจากระบบภายนอก (ERP) มาก่อน ระบบ monitoring บันทึกผลเทียบกับ Job ที่มีอยู่แล้วเท่านั้น ระบบจริงต้องมี integration layer เชื่อม MES กับ ERP/Planning | ANSI/ISA-95 (IEC 62264) |
 | 1.2 | Injection Molding มี Startup Scrap เสมอ (mold ยังไม่ถึง thermal equilibrium) หากไม่แยกจาก reject ปกติ ตัวเลข Yield Rate จะบิดเบือนในงานสั่งผลิตจำนวนน้อย | แยก field `startup_scrap_qty` ออกจาก reject ทั่วไป — shot แรก 3–5 shot หลัง mold change ถือเป็น purge/startup scrap มาตรฐาน | ไม่มีมาตรฐานสากลกำหนดตัวเลข — เป็น business rule ภายในองค์กร |
 | 1.3 | ต้องแยกว่า STOP คือหยุดตามแผนหรือ downtime จริง เพราะต้นทุนการ restart ไม่เท่ากัน (barrel เย็นตัวต้อง warm-up ใหม่) | ใช้ threshold เวลาแยก planned pause ออกจาก downtime event ระบบจริงต้องจำแนก Planned/Unplanned/Changeover | ISO 22400-2 |
@@ -63,7 +68,11 @@ Prototype ระบบ Production Monitoring สำหรับเครื่�
 | 1.5 | การเชื่อมข้อมูลทั้งโรงงานหมายความว่าหากระบบล่ม (เช่นไฟไหม้) การผลิตทั้งหมดเสี่ยง "ตาบอด" | ไม่ implement Disaster Recovery จริงใน Prototype แต่ออกแบบ config ให้รองรับ replication ระบบจริงต้องมี on-site server คู่กับ cloud replica พร้อม DR runbook | ISO 22301 |
 | 1.6 | ผู้บริหารต้องการ KPI ที่แปลงจาก raw data แล้ว (Cost per Hour, OEE%, Reject rate, Energy) ไม่ใช่ Cycle Time ดิบ | เผื่อ field `machine_rated_power_kw`, `labor_cost_per_hour`, `target_cycle_time_sec` ใน config ล่วงหน้า เพื่อคำนวณ KPI ได้โดยไม่ต้องแก้ schema — **implement แล้ว** เป็น Executive KPI view (`/kpi`) แยกจาก Operator dashboard | ISO 22400-2 |
 | 1.7 | อุตสาหกรรม Injection Molding มี interface มาตรฐานเชื่อมเครื่องจักรกับ MES อยู่แล้ว การออกแบบ schema เองทั้งหมดทำให้เกิดต้นทุน adapter ซ้ำซ้อนเมื่อซื้อเครื่องรุ่นใหม่ที่รองรับมาตรฐานนี้ | Prototype ออกแบบ JSON payload เอง แต่จัดกลุ่ม field ตามแนวคิด `MachineData`/`JobData`/`ProcessData` เพื่อ map ไปมาตรฐานได้ในอนาคต | EUROMAP 77 (เทียบเท่า OPC 40077), IEC 62541 (OPC UA) |
-| **Dev** | | | |
+
+### Dev
+
+| #   | ปัญหาที่พบ | แนวทางแก้ไข / สมมติฐานใน Prototype | [อ้างอิงมาตรฐาน](#มาตรฐานอ้างอิงทั้งหมด) |
+| --- | ---------- | ---------------------------------- | ---------------------------------------- |
 | 2.1 | Hardcode รายชื่อเครื่องในโค้ดทำให้การขยายเป็น 200 เครื่องต้อง deploy ใหม่ทุกครั้ง | หน้า Admin เพิ่มเครื่องที่เขียนลง DB ทันทีโดยไม่ต้อง restart service — dynamic MQTT wildcard subscription | — |
 | 2.2 | ระบบที่รันคู่กับสายการผลิตจริง deploy พลาดมีต้นทุนสูงกว่าเว็บทั่วไป | ใช้ versioned migration script (up/down) รองรับ rollback ระดับ schema ระบบจริงควรใช้ blue-green deployment หรือ feature flag | — |
 | 2.3 | Backup ฐานข้อมูลขนาดใหญ่ระหว่างรับข้อมูล real-time จาก 200 เครื่องพร้อมกัน อาจทำให้ query ช้าลง | ใช้ scheduled `pg_dump` ที่ off-peak hour ใน Prototype ระบบจริงต้องใช้ read replica แยกสำหรับ backup ไม่ให้แย่ง I/O กับ write path หลัก | ISO/IEC 27001 Annex A.12.3 |
@@ -72,7 +81,10 @@ Prototype ระบบ Production Monitoring สำหรับเครื่�
 | 2.6 | การอ่านค่าที่เป็น float/double word (เช่น Barrel Temperature) โดยไม่รับประกัน buffer consistency อาจเกิด "torn read" ทำให้ค่าอ่านผิดเพี้ยนแบบสุ่ม | ใช้ Modbus library ที่รับประกัน atomic multi-register read พร้อม sanity check ฝั่ง Backend (ค่ากระโดดเกิน physical limit ให้ flag เป็น suspect) | Modbus Application Protocol Specification |
 | 2.7 | Modbus function 03/04/16 อ่าน/เขียนได้สูงสุด 125 holding registers ต่อ 1 request เมื่อเพิ่ม sensor ในอนาคตอาจเกินเพดานนี้ | วางแผน logic แบ่ง (chunking) เป็นหลาย request โดยยังคง cycle time รวมให้อยู่ในเกณฑ์ที่ยอมรับได้ | Modbus Application Protocol Specification |
 
-| **Engineering** | | | |
+### Engineering
+
+| #   | ปัญหาที่พบ | แนวทางแก้ไข / สมมติฐานใน Prototype | [อ้างอิงมาตรฐาน](#มาตรฐานอ้างอิงทั้งหมด) |
+| --- | ---------- | ---------------------------------- | ---------------------------------------- |
 | 3.1 | Path การ monitoring (PLC → Gateway → MQTT → Dashboard) มีจุดอ่อนที่ยอมรับได้ในงาน monitoring แต่ยอมรับไม่ได้ในงาน safety (network latency, broker ล่ม) | Emergency Shutdown ต้องเป็นวงจร hardwired แยกอิสระ ทำงานแบบ fail-safe ตัดไฟผ่าน safety relay/contactor โดยตรง ระบบ monitoring รับสถานะมา log และแจ้งเตือนเท่านั้น | IEC 60204-1, ISO 13849-1, IEC 62061, EUROMAP 78/78.1 |
 | 3.2 | หาก Circuit Breaker ตัดไฟทั้งไลน์ทุกครั้งที่เครื่องเดียวมีปัญหา จะเสียเวลา restart ทุกเครื่องโดยไม่จำเป็น | ทำ selective coordination study (time-current curve) ให้ CB ตัดเฉพาะจุดใกล้ fault ที่สุดก่อน | IEC 60947-2, IEEE 242 |
 | 3.3 | สาย Ethernet ทองแดง (Cat5e/Cat6) จำกัดระยะ 100 เมตรต่อ segment โรงงานขนาดใหญ่มักมีระยะเกินนี้ | ใช้ Fiber optic + media converter สำหรับ backbone ระหว่างโซนที่ไกลกัน | IEEE 802.3, TIA/EIA-568 |
@@ -84,7 +96,7 @@ Prototype ระบบ Production Monitoring สำหรับเครื่�
 | 3.9 | การซ่อมบำรุงเครื่องเดียวควรทำได้โดยไม่กระทบเครื่องข้างเคียงในไลน์เดียวกัน | ออกแบบ physical isolation (MCCB แบบ withdrawable ที่มีตำแหน่ง ON/OFF/TEST/ISOLATE) ไว้ตั้งแต่ต้น ไม่พึ่ง software toggle อย่างเดียว | IEC 60947-3, ISO 14118 |
 | 3.10 | เครือข่ายฝั่ง IT (ERP, Office PC) และ OT (PLC, SCADA) ต้องแยกโซนชัดเจน (ดู [IT กับ OT ต่างกันอย่างไร](#it-ot-convergence)) | วางสถาปัตยกรรมผ่าน Industrial DMZ ตาม Purdue Model | IEC 62443, Purdue Enterprise Reference Architecture |
 
-### Use Case
+## Use Case
 
 | Actor                                         | คือใคร                                                                                                          | ใช้งานผ่านหน้าไหน                                                        |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
@@ -121,6 +133,32 @@ Prototype ระบบ Production Monitoring สำหรับเครื่�
 ---
 
 # Solution
+
+## สมมติฐานและข้อจำกัด
+
+- เครื่องจักรต้องมี asset record ใน ERP ก่อนเสมอ แล้วลงทะเบียนผ่าน Admin API ก่อนเสมอ ระบบจะไม่ auto-register จาก MQTT — Simulator เรียก ERP API เพื่อสร้าง/อัปเดต asset ของตัวเองแล้วเรียก Admin API เพื่อลงทะเบียนตอนเริ่มทำงาน จำลองขั้นตอน commissioning ของช่างเทคนิคจริงที่เครื่องมักถูกบันทึกไว้ใน ERP อยู่ก่อนแล้ว
+- Admin ลงทะเบียนเครื่องจักรใหม่ด้วยการ "เลือก" แถวใน `erp_machine_assets` ที่มีอยู่แล้ว ไม่ใช่พิมพ์ชื่อ/สเปคเข้าไปเอง เพื่อไม่ให้เครื่องจักรจริงเครื่องเดียวถูกลงทะเบียนซ้ำด้วยข้อมูลสเปคที่ไม่ตรงกัน
+- Job Number มาจากระบบภายนอก (สมมติว่าเป็น ERP) — ระบบ Monitoring บันทึกผลเทียบกับ Job ที่มีอยู่แล้วเท่านั้น หน้า ERP (mock) ในระบบนี้ทำหน้าที่เป็น price book ของ SKU, asset master data ของเครื่องจักร, และ mock job order (Job Number/SKU/จำนวนสั่ง — สร้างอัตโนมัติทุกครั้งที่ job เริ่มผลิต) ไม่ใช่ระบบ Order/Job management เต็มรูปแบบ — การเทียบยอดสั่งซื้อกับยอดผลิตจริงเป็นแค่การ join แสดงผลตาม `job_number`/`product_code` ในหน้า Production เท่านั้น ไม่ใช่ FK ผูกกันจริงระดับ DB
+- OFFLINE ตรวจจับด้วย watchdog (เช็ค `last_seen_at` ทุก 5 วิ, threshold ปรับได้ผ่าน env) ไม่ใช่ MQTT Last Will เพราะโจทย์คือเครื่อง "หยุดส่งข้อมูล" ไม่ใช่ "ตัดการเชื่อมต่อ"
+- Deactivate เครื่องจักรใน Admin = หยุดรับ telemetry จาก MQTT (status → `INACTIVE`) แต่ไม่ได้สั่งเครื่องจริงหยุดทำงาน — คนละเรื่องกับ Emergency Stop ที่ต้องเป็น hardwired safety circuit แยกอิสระ (ดู [Future Vision](#future-vision-สู่-unmanned-lights-out-operation))
+- Performance/OEE ต่อเครื่องจะว่าง (`—`) จนกว่าจะตั้งค่า Target Cycle Time ในหน้า ERP (asset master data ของเครื่องนั้น) — ไม่ default ค่าเดาเอง
+- **Simulator ทำหน้าที่แทน ERP เปิด Job เอง แทนการสร้างหน้า mock-ERP แยก** — ตรงกับสมมติฐานว่า Job Number มาจากภายนอกอยู่แล้ว ลดความซับซ้อนให้โฟกัสที่ Monitoring เป็นหลัก ข้อเสีย: แยกขอบเขต MES/ERP ไม่ชัดเท่าของจริง
+- **Admin page + dynamic MQTT wildcard subscription แทนการ hardcode รายชื่อเครื่องแล้ว deploy ใหม่** — Direction.md ข้อ 7 ระบุตรงๆ ว่ากรรมการอาจขอให้ "เพิ่มเครื่องจักร" กลางการ demo สด ถ้าไม่มีความสามารถนี้จะทำ requirement ข้อนี้ไม่ผ่านทันที ข้อเสีย: ใช้เวลาพัฒนาเพิ่มขึ้นเล็กน้อยเพราะต้องทำทั้ง Admin UI และ backend ฝั่ง dynamic subscribe
+
+### สถานะ (Status) ของเครื่องจักรมีความหมายว่าอะไรบ้าง
+
+| Status    | ความหมาย                                                                                                                                                                                            | นับเป็น Uptime หรือ Downtime                    |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `RUN`     | เครื่องกำลังทำงานผลิตอยู่                                                                                                                                                                             | Uptime                                            |
+| `STOP`    | เครื่องหยุดโดยตั้งใจ เช่น รอรอบงานถัดไป เปลี่ยนโหมด/แม่พิมพ์ระหว่างงาน (Intentional downtime)                                                                                                       | Downtime                                          |
+| `ALARM`   | เครื่องแจ้งเตือนปัญหา (ดูรายละเอียดเพิ่มที่ตาราง `alarms`)                                                                                                                                            | Downtime                                          |
+| `OFFLINE` | ไม่มีข้อมูล telemetry เข้ามาเกิน threshold ที่ตั้งไว้ (`BACKEND_WATCHDOG_OFFLINE_THRESHOLD_SEC`, ค่าเริ่มต้น 15 วินาที) — Watchdog job ฝั่ง backend เป็นคนตั้งสถานะนี้เอง ไม่ใช่เครื่องจักรส่งมา | Downtime (นับแยกเป็น "Offline" ไม่รวมกับ Error) |
+
+- `OFFLINE` ยังเป็นค่าเริ่มต้น (`@default("OFFLINE")`) ของเครื่องที่เพิ่งลงทะเบียนใหม่หรือถูก reactivate ด้วย เพราะยังไม่มี telemetry เข้ามา
+- เครื่องที่ `dataSource = "MANUAL"` (ไม่มีการเชื่อมต่อจริง ข้อมูลมาจาก CSV import อย่างเดียว) จะไม่มี Watchdog ตรวจจับ `OFFLINE` ให้ เพราะไม่มี telemetry ให้ตรวจตั้งแต่แรก (ดู [GAP 1.4](#gap-ที่โจทย์ไม่ได้บอก))
+- ถ้าเจอ status อื่นที่ไม่ใช่ 4 ค่านี้ (เช่น `IDLE` ที่หลุดมาจากไฟล์ CSV ที่ import) ระบบจะยังนับเป็น Downtime แต่แยกเก็บไว้เป็นหมวด "อื่นๆ" แทนที่จะทิ้งไปเฉยๆ
+
+---
 
 ## Existing Technology
 
@@ -211,13 +249,7 @@ Prototype นี้ใช้ MQTT (payload format จำลองตามที
 
 ![Data Flow Diagram](data_flow_diagram.svg)
 
-> Note
-
-- เครื่องจักรต้องมี asset record ใน ERP ก่อนเสมอ แล้วลงทะเบียนผ่าน Admin API ก่อนเสมอ ระบบจะไม่ auto-register จาก MQTT — Simulator เรียก ERP API เพื่อสร้าง/อัปเดต asset ของตัวเองแล้วเรียก Admin API เพื่อลงทะเบียนตอนเริ่มทำงาน จำลองขั้นตอน commissioning ของช่างเทคนิคจริงที่เครื่องมักถูกบันทึกไว้ใน ERP อยู่ก่อนแล้ว
-- Admin ลงทะเบียนเครื่องจักรใหม่ด้วยการ "เลือก" แถวใน `erp_machine_assets` ที่มีอยู่แล้ว ไม่ใช่พิมพ์ชื่อ/สเปคเข้าไปเอง เพื่อไม่ให้เครื่องจักรจริงเครื่องเดียวถูกลงทะเบียนซ้ำด้วยข้อมูลสเปคที่ไม่ตรงกัน
-- Job Number มาจากระบบภายนอก (สมมติว่าเป็น ERP) — ระบบ Monitoring บันทึกผลเทียบกับ Job ที่มีอยู่แล้วเท่านั้น หน้า ERP (mock) ในระบบนี้ทำหน้าที่เป็น price book ของ SKU, asset master data ของเครื่องจักร, และ mock job order (Job Number/SKU/จำนวนสั่ง — สร้างอัตโนมัติทุกครั้งที่ job เริ่มผลิต) ไม่ใช่ระบบ Order/Job management เต็มรูปแบบ
-- Deactivate เครื่องจักรใน Admin = หยุดรับ telemetry จาก MQTT (status → `INACTIVE`) แต่ไม่ได้สั่งเครื่องจริงหยุดทำงาน — คนละเรื่องกับ Emergency Stop ที่ต้องเป็น hardwired safety circuit แยกอิสระ (ดู [Future Vision](#future-vision-สู่-unmanned-lights-out-operation))
-- Admin page + dynamic MQTT wildcard subscription แทนการ hardcode รายชื่อเครื่องแล้ว deploy ใหม่
+> สมมติฐานเบื้องหลัง flow นี้ (การ commissioning ผ่าน ERP ก่อนเสมอ, เกณฑ์ตรวจ OFFLINE, ความหมายของ Deactivate ฯลฯ) อยู่ที่ [สมมติฐานและข้อจำกัด](#สมมติฐานและข้อจำกัด) ด้านบน
 
 ---
 
@@ -325,7 +357,7 @@ Prefix ทุก endpoint ด้วย `/api/v1/` เพื่อให้เพ
 
 ---
 
-## Future Vision: สู่ Unmanned (Lights-Out) Operation
+# Future Vision: สู่ Unmanned (Lights-Out) Operation
 
 โรงงาน Injection Molding ที่มี automation/robot density สูงอยู่แล้ว มีศักยภาพจะขยับไปสู่การผลิตแบบ "Unmanned" ได้ในระยะยาว — เอกสารส่วนนี้วางแนวคิดกระบวนการทั้งสาย ตั้งแต่รับ order ลูกค้าจนถึงส่งมอบ logistics พร้อมข้อจำกัดของแต่ละขั้นตอน โดยเฉพาะความปลอดภัยที่เป็นเงื่อนไขจริงของอุตสาหกรรม ไม่ใช่แค่ปัญหาทางเทคนิคของซอฟต์แวร์
 
@@ -333,7 +365,7 @@ Prefix ทุก endpoint ด้วย `/api/v1/` เพื่อให้เพ
 
 ระบบ Monitoring ในโปรเจกต์นี้อยู่ที่ระดับ Supervisory (Level 2 ตาม ISA-95) วิสัยทัศน์นี้คือขยับขึ้นไปถึง Level 3 (MES) และ Level 4 (ERP/Business) ให้ทำงานแบบ closed-loop กับ Level 0-1 (เครื่องจักร/PLC) โดยอัตโนมัติทั้งสาย
 
-### กระบวนการที่เป็นไอเดีย
+## กระบวนการที่เป็นไอเดีย
 
 1. **Order Intake** — รับ order จาก B2B portal/EDI/ERP แปลงเป็น production requirement ต้องมี business rule ตรวจเครดิต/สัญญาก่อนปล่อยเข้า production และ human approval gate สำหรับ order ผิดปกติ
 2. **Feasibility & Capacity Check** — เช็ค mold/recipe รองรับ SKU, คำนวณเวลาจาก cycle time มาตรฐาน — cycle time จริงแปรปรวนตามอุณหภูมิ/การสึกของ mold ต้องให้เป็นช่วงความเชื่อมั่นไม่ใช่ค่าคงที่ และ reserve กำลังผลิตสำรองเผื่อเครื่องเสีย
@@ -345,7 +377,7 @@ Prefix ทุก endpoint ด้วย `/api/v1/` เพื่อให้เพ
 8. **Automated Packing & Lot Labeling** — ฉลาก lot ต้อง generate จากข้อมูลที่ verified แล้วเท่านั้น (หลัง QC pass) ไม่ใช่ตามแผนเดิม เพราะถ้ามีการสลับ mold/recipe กลางคันโดยไม่ตั้งใจ ฉลากต้องสะท้อนสิ่งที่เกิดขึ้นจริง
 9. **Handoff to Logistics** — ต้องมี reconciliation step เทียบจำนวนที่ระบบคาดว่าผลิตได้กับจำนวนจริงที่ scan เข้าคลังเสมอ ห้ามเชื่อตัวเลขจาก production system ไปตรงๆ
 
-### ข้อจำกัดข้ามกระบวนการ (Cross-cutting Limitations)
+## ข้อจำกัดข้ามกระบวนการ (Cross-cutting Limitations)
 
 - **Functional Safety** — Emergency Stop และ safety interlock ต้องเป็นวงจร hardwired แยกอิสระจาก network/software path เสมอ (IEC 60204-1, ISO 13849-1, IEC 62061) ระบบอัตโนมัติ/remote เป็นได้แค่ผู้ขออนุญาต การป้องกัน unexpected start-up (ISO 14118) ต้องทำงานได้แม้ไม่มีคนอยู่หน้าเครื่องเลย เพราะนั่นคือสถานการณ์ปกติของ unmanned ไม่ใช่กรณีพิเศษ
 - **ความปลอดภัยไซเบอร์ฝั่ง OT** — remote command channel ที่สั่งเครื่องจักรทำงานได้จริงจากนอกไซต์ เป็น attack surface ร้ายแรงกว่า monitoring ทั่วไปมาก (ผลลัพธ์ไม่ใช่แค่ข้อมูลรั่ว แต่เครื่องจักรทำงานผิดจากที่ตั้งใจได้) ต้องมี mutual authentication, command signing, แยกโซนตาม IEC 62443 เข้มงวดกว่ามาตรฐาน
@@ -380,7 +412,7 @@ docker compose down                  # หยุดระบบ (เก็บข
 docker compose down -v               # หยุด + ล้างข้อมูลทั้งหมด (เริ่มใหม่จากศูนย์)
 ```
 
-**เพิ่มเครื่องจักรเครื่องที่ 4+ (เช่นตอน Live Demo)**: ลงทะเบียนผ่านหน้า Admin แล้วจบ — ไม่ต้องรัน `docker compose run` เองอีกต่อไป Backend ควบคุม container ของ simulator โดยตรงผ่าน Docker socket ที่ mount เข้ามา (`backend/src/docker/simulatorManager.ts`) เครื่องใหม่จะขึ้นสถานะ RUN ภายในไม่กี่วินาที และ Deactivate ในหน้า Admin จะสั่งหยุด container นั้นจริงๆ ไม่ใช่แค่เพิกเฉยข้อมูลที่ยังไหลเข้ามา — รายละเอียดเหตุผลอยู่ใน [Design Rationale](#design-rationale--เหตุผลเชิงลึกเทียบกับทางเลือกอื่น)
+**เพิ่มเครื่องจักรเครื่องที่ 4+ (เช่นตอน Live Demo)**: ลงทะเบียนผ่านหน้า Admin แล้วจบ — ไม่ต้องรัน `docker compose run` เองอีกต่อไป Backend ควบคุม container ของ simulator โดยตรงผ่าน Docker socket ที่ mount เข้ามา (`backend/src/docker/simulatorManager.ts`) เครื่องใหม่จะขึ้นสถานะ RUN ภายในไม่กี่วินาที และ Deactivate ในหน้า Admin จะสั่งหยุด container นั้นจริงๆ ไม่ใช่แค่เพิกเฉยข้อมูลที่ยังไหลเข้ามา — รายละเอียดเหตุผลอยู่ใน [GAP 2.1](#dev)
 
 # Ref
 
@@ -435,4 +467,6 @@ backend/      Node.js/TypeScript — MQTT subscriber + REST API v1 + WebSocket +
 dashboard/    React + Vite — Operation / Production / Performance / Executive KPI / ERP / Machine Management / Admin / Simulator Tuning views
 mosquitto/    ค่าตั้งค่า MQTT broker
 architecture_diagram.svg   Architecture diagram (deliverable ข้อ 1)
+data_flow_diagram.svg      Data Flow diagram (sequence: commissioning/steady-state/watchdog/query)
+erd_diagram.svg            ERD ของ Database Structure (9 ตาราง)
 ```
