@@ -160,7 +160,7 @@
   <text x="1000" y="318" text-anchor="middle" font-size="9.5" fill="#333333">(real-time push ไปหน้าจอ)</text>
 
   <!-- Dashboard -->
-  <rect x="1250" y="150" width="280" height="590" rx="8" fill="#F3E5F5" stroke="#6A1B9A" stroke-width="1.5"/>
+  <rect x="1250" y="150" width="280" height="650" rx="8" fill="#F3E5F5" stroke="#6A1B9A" stroke-width="1.5"/>
   <text x="1390" y="173" text-anchor="middle" font-size="14" font-weight="bold" fill="#4A148C">Dashboard (React)</text>
   <text x="1390" y="190" text-anchor="middle" font-size="11" fill="#4A148C">Browser Client</text>
 
@@ -188,12 +188,17 @@
   <text x="1390" y="555" text-anchor="middle" font-size="9.5" fill="#E65100">(run-hours since PM เทียบ interval)</text>
   <text x="1390" y="570" text-anchor="middle" font-size="9.5" fill="#E65100">Downtime breakdown ตามสาเหตุ/รุ่นเครื่อง</text>
 
-  <rect x="1266" y="597" width="248" height="110" rx="6" fill="#FFFFFF" stroke="#6A1B9A" stroke-width="1"/>
+  <rect x="1266" y="597" width="248" height="92" rx="6" fill="#FFFFFF" stroke="#6A1B9A" stroke-width="1"/>
   <text x="1390" y="617" text-anchor="middle" font-size="11" font-weight="bold" fill="#4A148C">Admin View</text>
   <text x="1390" y="634" text-anchor="middle" font-size="9.5" fill="#4A148C">ลงทะเบียน/เปิด-ปิดเครื่องจักร (เลือกจาก ERP asset)</text>
   <text x="1390" y="649" text-anchor="middle" font-size="9.5" fill="#4A148C">System Health (DB stats, ingestion rate)</text>
-  <text x="1390" y="664" text-anchor="middle" font-size="9.5" fill="#4A148C">Import CSV (manual fallback)</text>
-  <text x="1390" y="679" text-anchor="middle" font-size="9.5" fill="#4A148C">Audit Log</text>
+  <text x="1390" y="664" text-anchor="middle" font-size="9.5" fill="#4A148C">Audit Log</text>
+
+  <rect x="1266" y="701" width="248" height="82" rx="6" fill="#FFFDE7" stroke="#EF6C00" stroke-width="1.2"/>
+  <text x="1390" y="719" text-anchor="middle" font-size="11" font-weight="bold" fill="#E65100">Manual Import + Simulator Tuning</text>
+  <text x="1390" y="736" text-anchor="middle" font-size="9" fill="#E65100">Import CSV job/production (dataSource=MANUAL)</text>
+  <text x="1390" y="750" text-anchor="middle" font-size="9" fill="#E65100">ปรับ probability/range ของ simulator แบบ live</text>
+  <text x="1390" y="764" text-anchor="middle" font-size="9" fill="#E65100">ผ่าน MQTT control channel (ไม่ต้อง restart)</text>
 
   <!-- Dashed admin arrow back to backend -->
   <path d="M1266,650 C 1120,662 980,540 884,432" fill="none" stroke="#6A1B9A" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowPurple)"/>
