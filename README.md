@@ -132,20 +132,7 @@ Prototype ระบบ Production Monitoring สำหรับเครื่�
 
 มาตรฐาน ISA-95 แบ่งโครงสร้างระบบในโรงงานเป็นลำดับชั้น เรียกว่า Automation Pyramid มองเป็นพีระมิด 5 ชั้น จากล่างขึ้นบน
 
-```
-      ┌─────────────────────────┐
-      │  Level 4: ERP           │  ← วางแผนธุรกิจ, รับ Order ลูกค้า, การเงิน
-      ├─────────────────────────┤
-      │  Level 3: MES            │  ← วางแผนการผลิต, สั่งงาน, ติดตามคุณภาพ
-      ├─────────────────────────┤
-      │  Level 2: SCADA/         │  ← "จุดที่โปรเจกต์นี้อยู่"
-      │  Supervisory (Monitoring)│     มองเห็นสถานะ, เก็บ log, แจ้งเตือน
-      ├─────────────────────────┤
-      │  Level 1: PLC/Control    │  ← สมองกลควบคุมเครื่องจักรแบบ real-time
-      ├─────────────────────────┤
-      │  Level 0: Field/Process  │  ← ตัวเครื่องจักรจริง, เซนเซอร์, มอเตอร์
-      └─────────────────────────┘
-```
+![Automation Pyramid](automation_pyramid_diagram.svg)
 
 - Level 0-1 คือ "ตัวเครื่องจักรกับสมองกลที่คุมมันโดยตรง" (เช่น PLC สั่งฉีดพลาสติกตามพารามิเตอร์ที่ตั้งไว้)
 - Level 2 คือ "จอมอนิเตอร์ที่คนดูสถานะได้" ซึ่งเป็นสิ่งที่ Prototype นี้กำลังสร้าง
@@ -430,7 +417,8 @@ simulator/    Machine Simulator (Node.js + mqtt.js) — จำลองเคร
 backend/      Node.js/TypeScript — MQTT subscriber + REST API v1 + WebSocket + Prisma/PostgreSQL
 dashboard/    React + Vite — Operation / Production / Performance / Executive KPI / ERP / Machine Management / Admin / Simulator Tuning views
 mosquitto/    ค่าตั้งค่า MQTT broker
-architecture_diagram.svg   Architecture diagram (deliverable ข้อ 1)
-data_flow_diagram.svg      Data Flow diagram (sequence: commissioning/steady-state/watchdog/query)
-erd_diagram.svg            ERD ของ Database Structure (9 ตาราง)
+architecture_diagram.svg      Architecture diagram (deliverable ข้อ 1)
+data_flow_diagram.svg         Data Flow diagram (sequence: commissioning/steady-state/watchdog/query)
+erd_diagram.svg               ERD ของ Database Structure (9 ตาราง)
+automation_pyramid_diagram.svg  Automation Pyramid (ISA-95) — อ้างอิงในหัวข้อ Existing Technology
 ```

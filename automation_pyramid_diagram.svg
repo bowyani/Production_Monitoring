@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 660" font-family="Noto Sans Thai, Waree, Arial, Helvetica, sans-serif">
+  <rect x="0" y="0" width="1500" height="660" fill="#FAFAFA"/>
+
+  <!-- Title -->
+  <text x="750" y="32" text-anchor="middle" font-size="22" font-weight="bold" fill="#212121">Automation Pyramid (ISA-95)</text>
+  <text x="750" y="52" text-anchor="middle" font-size="13" fill="#616161">โรงงานมีกี่ "ชั้น" ของระบบ — จากล่างขึ้นบน Level 0 ถึง Level 4</text>
+
+  <!-- Level 4: ERP -->
+  <path d="M 300,80 L 460,80 L 515,180 L 245,180 Z" fill="#F3E5F5" stroke="#6A1B9A" stroke-width="1.5"/>
+  <text x="380" y="136" text-anchor="middle" font-size="14" font-weight="bold" fill="#4A148C">Level 4</text>
+  <text x="380" y="156" text-anchor="middle" font-size="13" fill="#4A148C">ERP</text>
+
+  <!-- Level 3: MES -->
+  <path d="M 245,180 L 515,180 L 570,280 L 190,280 Z" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.5"/>
+  <text x="380" y="236" text-anchor="middle" font-size="14" font-weight="bold" fill="#E65100">Level 3</text>
+  <text x="380" y="256" text-anchor="middle" font-size="13" fill="#E65100">MES</text>
+
+  <!-- Level 2: SCADA/Supervisory (Monitoring) — highlighted: this project -->
+  <path d="M 190,280 L 570,280 L 625,380 L 135,380 Z" fill="#E8F5E9" stroke="#2E7D32" stroke-width="3"/>
+  <text x="380" y="325" text-anchor="middle" font-size="14" font-weight="bold" fill="#1B5E20">Level 2</text>
+  <text x="380" y="345" text-anchor="middle" font-size="13" fill="#1B5E20">SCADA / Supervisory</text>
+  <text x="380" y="362" text-anchor="middle" font-size="13" fill="#1B5E20">(Monitoring)</text>
+
+  <!-- Level 1: PLC/Control -->
+  <path d="M 135,380 L 625,380 L 680,480 L 80,480 Z" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.5"/>
+  <text x="380" y="436" text-anchor="middle" font-size="14" font-weight="bold" fill="#0D47A1">Level 1</text>
+  <text x="380" y="456" text-anchor="middle" font-size="13" fill="#0D47A1">PLC / Control</text>
+
+  <!-- Level 0: Field/Process -->
+  <path d="M 80,480 L 680,480 L 735,580 L 25,580 Z" fill="#ECEFF1" stroke="#455A64" stroke-width="1.5"/>
+  <text x="380" y="536" text-anchor="middle" font-size="14" font-weight="bold" fill="#263238">Level 0</text>
+  <text x="380" y="556" text-anchor="middle" font-size="13" fill="#263238">Field / Process</text>
+
+  <!-- Callout: this project sits at Level 2 -->
+  <path d="M 598,330 L 700,300" stroke="#2E7D32" stroke-width="1.5" stroke-dasharray="4,3" fill="none"/>
+  <rect x="700" y="270" width="230" height="60" rx="8" fill="#2E7D32"/>
+  <text x="815" y="294" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#FFFFFF">จุดที่โปรเจกต์นี้อยู่</text>
+  <text x="815" y="312" text-anchor="middle" font-size="11" fill="#E8F5E9">มองเห็นสถานะ, เก็บ log, แจ้งเตือน</text>
+
+  <!-- Connector lines + descriptions -->
+  <line x1="487" y1="130" x2="790" y2="130" stroke="#9E9E9E" stroke-width="1"/>
+  <text x="800" y="134" font-size="13" fill="#424242">วางแผนธุรกิจ, รับ Order ลูกค้า, การเงิน</text>
+
+  <line x1="542" y1="230" x2="790" y2="230" stroke="#9E9E9E" stroke-width="1"/>
+  <text x="800" y="234" font-size="13" fill="#424242">วางแผนการผลิต, สั่งงาน, ติดตามคุณภาพ</text>
+
+  <line x1="652" y1="430" x2="790" y2="430" stroke="#9E9E9E" stroke-width="1"/>
+  <text x="800" y="434" font-size="13" fill="#424242">สมองกลควบคุมเครื่องจักรแบบ real-time</text>
+
+  <line x1="707" y1="530" x2="790" y2="530" stroke="#9E9E9E" stroke-width="1"/>
+  <text x="800" y="534" font-size="13" fill="#424242">ตัวเครื่องจักรจริง, เซนเซอร์, มอเตอร์</text>
+
+  <!-- Legend note -->
+  <text x="750" y="625" text-anchor="middle" font-size="11.5" font-style="italic" fill="#757575">ยิ่งอยู่ชั้นล่าง ยิ่งต้องตอบสนองเร็วและพลาดไม่ได้ (real-time, safety-critical) — ยิ่งอยู่ชั้นบน ยิ่งตอบสนองช้าได้ (นาที–ชั่วโมง)</text>
+</svg>

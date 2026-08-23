@@ -95,7 +95,7 @@
 
   <rect x="616" y="384" width="248" height="52" rx="6" fill="#FFFFFF" stroke="#558B2F" stroke-width="1"/>
   <text x="740" y="404" text-anchor="middle" font-size="11" font-weight="bold" fill="#33691E">REST API</text>
-  <text x="740" y="419" text-anchor="middle" font-size="9.5" fill="#33691E">/api/v1 — machines/jobs/alarms/kpi/admin/import + erp, maintenance (ใหม่)</text>
+  <text x="740" y="419" text-anchor="middle" font-size="9.5" fill="#33691E">/api/v1 — machines/jobs/alarms/kpi/admin/erp (ใหม่)</text>
 
   <rect x="616" y="447" width="248" height="52" rx="6" fill="#FFFFFF" stroke="#558B2F" stroke-width="1"/>
   <text x="740" y="467" text-anchor="middle" font-size="11" font-weight="bold" fill="#33691E">WebSocket Server</text>
@@ -202,11 +202,13 @@
 
   <!-- Dashed admin arrow back to backend -->
   <path d="M1266,650 C 1120,662 980,540 884,432" fill="none" stroke="#6A1B9A" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowPurple)"/>
+  <rect x="958" y="589" width="220" height="30" fill="#FAFAFA"/>
   <text x="965" y="600" font-size="9.5" fill="#6A1B9A">POST/PATCH /admin/machines/:id</text>
   <text x="965" y="614" font-size="9.5" fill="#6A1B9A">(register/deactivate + คุม container)</text>
 
   <!-- Dashed ERP/Chief Operator mutation arrow back to backend -->
   <path d="M1266,500 C 1100,485 980,450 884,415" fill="none" stroke="#6A1B9A" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowPurple)"/>
+  <rect x="953" y="459" width="215" height="30" fill="#FAFAFA"/>
   <text x="960" y="470" font-size="9.5" fill="#6A1B9A">PUT/DELETE /erp/... ,</text>
   <text x="960" y="484" font-size="9.5" fill="#6A1B9A">POST /admin/machines/:id/maintenance</text>
 

@@ -24,9 +24,18 @@
     <path d="M1300,700 Q 1200,650 1080,620" marker-end="url(#erdArrow)"/>
   </g>
 
+  <!-- Background plates behind edge labels so crossing lines don't cut through the text -->
+  <g fill="#FAFAFA">
+    <rect x="712" y="215" width="60" height="18"/>
+    <rect x="712" y="336" width="60" height="18"/>
+    <rect x="720" y="447" width="44" height="18"/>
+    <rect x="901" y="235" width="54" height="18"/>
+    <rect x="1064" y="525" width="106" height="18"/>
+    <rect x="1103" y="362" width="194" height="32"/>
+    <rect x="1103" y="642" width="194" height="32"/>
+  </g>
+
   <g font-size="9.5" fill="#37474F">
-    <text x="382" y="292" text-anchor="middle">shared PK</text>
-    <text x="382" y="304" text-anchor="middle">(machine_id = asset_id)</text>
     <text x="742" y="228" text-anchor="middle">records</text>
     <text x="742" y="349" text-anchor="middle">records</text>
     <text x="742" y="460" text-anchor="middle">runs</text>
@@ -72,6 +81,11 @@
   <text x="52" y="370" font-size="10.5" fill="#8D4E00">manufacturer_phone</text>
   <text x="52" y="385" font-size="10.5" fill="#8D4E00">created_at</text>
   <text x="52" y="400" font-size="10.5" fill="#8D4E00">updated_at</text>
+
+  <!-- shared-PK label drawn after both boxes (so it isn't painted over by their fills) and above the connector line (so the line doesn't cross it) -->
+  <rect x="300" y="200" width="160" height="32" fill="#FFFFFF" stroke="#9E9E9E" stroke-width="1" rx="4"/>
+  <text x="380" y="215" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#37474F">shared PK</text>
+  <text x="380" y="227" text-anchor="middle" font-size="9" fill="#37474F">(machine_id = asset_id)</text>
 
   <!-- ================= MACHINE_TELEMETRY ================= -->
   <rect x="780" y="100" width="300" height="158" rx="6" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
