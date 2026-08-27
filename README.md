@@ -15,15 +15,14 @@ Prototype ระบบ Production Monitoring สำหรับเครื่�
   - [Data Flow](#data-flow)
   - [Database Structure](#database-structure)
   - [API / Message Format](#api--message-format)
-  - [สิ่งที่ต้องเพิ่มจาก Protoype เพื่อ Implement](#สิ่งที่ต้องเพิ่มจาก-Protoype-เพื่อ-Implement)
-  - [แนวทางขยายจาก 3 เครื่องไปยัง 200 เครื่อง](#แนวทางขยายจาก-3-เครื่องไปยัง-200-เครื่อง)
+- [ถ้าเป็นเครื่องจักรจริง จะต่างจาก Simulator ตรงไหนบ้าง](#ถ้าเป็นเครื่องจักรจริง-จะต่างจาก-simulator-ตรงไหนบ้าง)
+  - [แนวทางการ implement](#แนวทางการ-implement)
 - [Future Vision: สู่ Unmanned (Lights-Out) Operation](#future-vision-สู่-unmanned-lights-out-operation)
   - [กระบวนการที่เป็นไอเดีย](#กระบวนการที่เป็นไอเดีย)
   - [ข้อจำกัดข้ามกระบวนการ (Cross-cutting Limitations)](#ข้อจำกัดข้ามกระบวนการ-cross-cutting-limitations)
 - [Quick Start](#quick-start)
 - [Ref](#ref)
   - [เอกสารอื่นที่เกี่ยวข้อง](#เอกสารอื่นที่เกี่ยวข้อง)
-  - [กรณีศึกษาอ้างอิง — SCG / Nawaplastic Industries (NPI)](#กรณีศึกษาอ้างอิง--scg--nawaplastic-industries-npi)
   - [มาตรฐานอ้างอิงทั้งหมด](#มาตรฐานอ้างอิงทั้งหมด)
   - [โครงสร้าง Repo](#โครงสร้าง-repo)
 
@@ -221,7 +220,7 @@ PostgreSQL, 9 ตาราง (normalize ไม่ denormalize — join ได�
 | `erp_job_orders`        | Mock "ใบสั่งซื้อจาก ERP" — ยอด**สั่งซื้อ**เท่านั้น สร้างอัตโนมัติทุกครั้งที่ job เริ่มผลิต ไม่ผูก FK กับ `production_jobs` (join ด้วย `job_number`/`product_code` แค่ตอนแสดงผลในหน้า Production) | `job_number` (PK), `product_code`, `quantity_ordered`                                                                                                                                                              |
 | `alarms`                | Alarm ที่เกิดขึ้น                                                                                                                                                                                | `machine_id` (FK), `job_number` (FK nullable), `alarm_code`, `alarm_message`, `alarm_timestamp`, `cleared_timestamp`                                                                                               |
 | `product_skus`          | Master data ราคา/ต้นทุนวัตถุดิบต่อ SKU ฝั่ง ERP (mock) — ใช้คำนวณ revenue/margin ในหน้า Executive KPI                                                                                            | `product_code` (PK), `description`, `unit_price_thb`, `material_cost_per_unit_thb`                                                                                                                                 |
-| `audit_log`             | Log การกระทำทุกครั้งในหน้า Admin/ERP (ตอบ Direction.md §4.2 "มี Log สำหรับตรวจสอบการทำงานเบื้องต้น")                                                                                             | `actor`, `action`, `target_type`, `target_id`, `detail` (JSON), `created_at`                                                                                                                                       |
+| `audit_log`             | Log การกระทำทุกครั้งในหน้า Admin/ERP                                                                                                                                                             | `actor`, `action`, `target_type`, `target_id`, `detail` (JSON), `created_at`                                                                                                                                       |
 
 `machines.machine_id` และ `erp_machine_assets.asset_id` เป็น 1:1 กันโดยใช้ค่าเดียวกันเป็น key ทั้งคู่ (shared primary key)
 
@@ -289,7 +288,112 @@ Prefix ทุก endpoint ด้วย `/api/v1/` เพื่อให้เพ
 
 ---
 
-## สิ่งที่ต้องเพิ่มจาก Protoype เพื่อ Implement
+# ถ้าเป็นเครื่องจักรจริง จะต่างจาก Simulator ตรงไหนบ้าง
+
+จุดที่ต้องรู้ไว้ก่อนเลยคือ **เครื่องจักรจริง (PLC) เรียก REST API เองไม่ได้** ต่างจาก Simulator ที่เป็นโค้ด Node.js เขียนขึ้นมาเองจึงสั่งให้มันยิง REST ได้ตามใจ — PLC ส่วนใหญ่พูดได้แค่ Modbus, OPC-UA, หรือ protocol เฉพาะของยี่ห้อนั้นๆ เท่านั้น พูด REST ไม่เป็น
+
+| ขั้นตอน         | Simulator (ปัจจุบัน)                                         | เครื่องจักรจริง (PLC)                                                                                                         |
+| --------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| Self-register   | Container เขียนโค้ดเองให้ยิง `POST /admin/machines` ตอน boot | **ทำไม่ได้เอง** — PLC ไม่มี logic แบบนี้                                                                                      |
+| ใครลงทะเบียนแทน | ตัวมันเอง                                                    | **Admin ต้องลงทะเบียนเครื่องด้วยมือ** ผ่าน Admin UI (เลือกจาก ERP asset ที่มีอยู่แล้ว, กรอก IP/Modbus address ของเครื่องจริง) |
+| ส่งข้อมูล       | publish MQTT เองได้เลยเพราะเขียนโค้ดเอง                      | **ต้องมีตัวกลางแปลภาษา** — เรียกว่า **Protocol Gateway / Edge Adapter**                                                       |
+
+### ตัวกลางที่ต้องเพิ่มเข้ามา: Protocol Gateway
+
+เครื่องจักรจริงพูด Modbus (ตามที่ Gap Analysis พูดถึง "Modbus Application Protocol Spec / Siemens S7-200") ไม่ใช่ MQTT — ต้องมี component ใหม่คั่นกลาง:
+
+```
+PLC จริง (พูด Modbus TCP/RS-485)
+        ↓
+Protocol Gateway  ← ตัวใหม่ที่ Simulator ไม่มี
+  - Poll register จาก PLC ตามรอบเวลา (เช่น อ่านทุก 2 วิ)
+  - แปลงค่า register ดิบ → JSON payload ตาม schema เดียวกับที่ Backend รับ
+  - Publish เข้า MQTT topic เดิม (factory/{id}/telemetry)
+        ↓
+MQTT Broker (mosquitto) — เหมือนเดิมทุกอย่าง
+        ↓
+Backend — รับเหมือนเดิม ไม่ต้องแก้อะไรเลย เพราะ payload หน้าตาเหมือนกัน
+```
+
+**จุดสำคัญ:** ถ้าออกแบบ payload/topic ให้ Gateway ยิงข้อมูลออกมาในรูปแบบเดียวกับที่ Simulator ยิง (topic เดียวกัน, schema เดียวกัน ตาม `schemaVersion` ที่มีอยู่แล้ว) **ฝั่ง Backend ไม่ต้องแก้โค้ดเลยแม้แต่บรรทัดเดียว** — นี่คือประโยชน์ของการออกแบบให้ MQTT เป็นจุดต่อ (interface) กลางที่ไม่สนใจว่าฝั่งต้นทางเป็น Simulator ปลอมหรือ Gateway จริง
+
+### ขั้นตอนลงทะเบียนเครื่องจริง (แทนที่ self-register)
+
+1. Admin กด Add Machine เหมือนเดิม เลือก ERP asset เดิม
+2. แต่ต้องกรอกข้อมูลเพิ่มที่ Simulator ไม่ต้องมี: **IP/Port ของ PLC, Modbus slave address, ตำแหน่ง register ที่ต้องอ่าน** (เช่น register 40001 = cycle time, 40002 = pressure)
+3. Backend เก็บ mapping นี้ไว้ แล้วสั่ง Gateway ให้เริ่ม poll เครื่องนั้นตามที่ตั้งค่า — **แทนที่จะสั่ง Docker spin up container ใหม่แบบ Simulator**
+
+Self-register แบบที่ Simulator ทำ เป็นเพราะ "มันคือโค้ดที่เขียนขึ้นมาเอง" — พอเป็นเครื่องจักรจริง งานส่วนนี้ย้ายไปเป็นหน้าที่ของ **Admin (คน) + Protocol Gateway (ตัวกลางใหม่)** แทน แต่ทุกอย่างตั้งแต่ MQTT Broker ลงไปจนถึง Database และ Dashboard **ใช้โค้ดเดิมได้หมดโดยไม่ต้องแก้** — นี่คือจุดที่ตอบคำถามกรรมการได้ว่าทำไม Prototype นี้ถึง "scale ไปเครื่องจักรจริงได้" ไม่ใช่ของเล่นที่ผูกติดกับ Simulator เท่านั้น
+
+## แนวทางการ implement
+
+```
+
+[1] Admin กรอก UI ครั้งเดียวตอน register
+machine_id: IMM-04, Modbus slave 5 @ 192.168.10.15
+↓
+บันทึกลง config ของ "Gateway" (ไม่ใช่ backend, ไม่ใช่ MQTT)
+
+[2] Gateway เอา config นี้ไปเปิด poll วนลูปตลอดเวลา
+ยิง Modbus request ไปที่ 192.168.10.15, slave 5
+อ่าน register ดิบ เช่น register 40001 = 1523 (แปลว่า pressure 152.3 bar)
+↓
+Gateway "cook" ตรงนี้แหละ — แปลง raw register → JSON
+{ pressure_bar: 152.3, cycle_time_sec: 12.4, ... }
+↓
+Gateway ใส่ machine_id ที่รู้อยู่แล้ว (จาก config ข้อ 1) ลงในชื่อ topic เอง
+publish → factory/IMM-04/telemetry ← ตรงนี้ machine_id ถูก "แปะป้าย" เสร็จแล้ว
+
+[3] MQTT Broker (mosquitto) แค่ส่งต่อ topic ที่ห่อเสร็จแล้ว
+ไม่รู้จัก ไม่สนใจ Modbus เลยแม้แต่นิดเดียว
+
+[4] Backend subscribe wildcard เหมือนเดิมทุกอย่าง
+เห็น topic factory/IMM-04/telemetry → รู้ทันทีว่าเป็นเครื่อง IMM-04
+(เพราะ machine_id ถูกฝังไว้ใน topic name ตั้งแต่ Gateway แล้ว)
+
+[5] React ไม่เคยเห็นคำว่า Modbus หรือ slave address เลยแม้แต่ตัวเดียว
+เหมือนเดิมกับตอนใช้ Simulator ทุกประการ
+```
+
+> Gateway คืออุปกรณ์ (หรือโปรแกรม) ตัวใหม่ที่เราเพิ่มเข้ามาเอง เพื่อ "ไปขอข้อมูล" จาก PLC แล้วแปลงส่งต่อเข้าระบบ Monitoring ของเรา — มันไม่เกี่ยวอะไรกับการควบคุมเครื่องจักรเลย มีหน้าที่เดียวคือ อ่านแล้วแปล
+
+## การไหลของข้อมูล
+
+```
+
+[เครื่องจักรจริง]
+sensor ต่างๆ (pressure, temp, motor)
+↓ สายไฟ/สาย signal
+[PLC] ← สมองควบคุมเครื่องจักร มีอยู่แล้วตั้งแต่ติดตั้งเครื่อง
+เก็บค่าไว้ใน register (เช่น register 40001 = pressure)
+↓ Modbus (สาย RS-485 หรือ Ethernet)
+[Gateway] ← ตัวใหม่ที่เราติดตั้งเพิ่ม เพื่อโปรเจกต์นี้โดยเฉพาะ
+ไป "ขอ" อ่าน register จาก PLC เป็นระยะ (poll)
+แปลง raw number → JSON ที่มีความหมาย
+ใส่ machine_id ที่ config ไว้ ลงใน MQTT topic
+↓ MQTT
+[mosquitto Broker] → Backend → Database → Dashboard
+```
+
+## โครงสร้าง
+
+```
+
+[Gateway 1] ── Cat6 (สั้นๆ ในตึกเดียวกัน) ──┐
+[Gateway 2] ── Cat6 ──────────────────────┤
+[Gateway 3] ── Cat6 ──────────────────────┼── [Access Switch ตึก A]
+[Gateway 4] ── Cat6 ──────────────────────┤ (ตัวเล็ก ราคาถูก ตั้งใกล้ๆ กลุ่ม Gateway)
+... ─┘
+│
+Uplink 1 เส้น (Fiber Optic)
+│
+▼
+[Core/Distribution Switch — Server Room]
+```
+
+## GAP
+
+> สิ่งที่ต้องเพิ่มจาก Protoype เพื่อ Implement
 
 | GAP      | ประเด็น         | สถานะตอนนี้                                          | พัฒนาต่อจาก prototype                                                                                                                                                                                                 |
 | -------- | --------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -297,7 +401,7 @@ Prefix ทุก endpoint ด้วย `/api/v1/` เพื่อให้เพ
 | ข้อ 3.10 | IT/OT Network   | Backend รันในเครือข่ายเดียวกับ dashboard (prototype) | แยกผ่าน **Industrial DMZ** ตาม Purdue Model — OT (PLC/Simulator) ไม่เปิดให้ IT เข้าตรง ต้องผ่านด่านกลางนี้เสมอ (ระบบตอนนี้ถูกออกแบบให้อยู่ตำแหน่งด่านนี้พอดีอยู่แล้ว)                                                 |
 | -        | สิทธิ์ผู้ใช้งาน | ไม่มี auth เลยใน prototype                           | ต้องแยก role: Operator เห็นเฉพาะเครื่องที่ดูแล / Line Supervisor เห็นภาพรวมไลน์ / Maintenance เข้า OT zone / Management เข้า Executive dashboard ผ่าน IT zone / System Admin เข้า Industrial DMZ ผ่าน MFA + audit log |
 
-## แนวทางขยายจาก 3 เครื่องไปยัง 200 เครื่อง
+> แนวทางขยายจาก 3 เครื่องไปยัง 200 เครื่อง
 
 | ประเด็น                       | สถานะตอนนี้ (3 เครื่อง)                                               | ทางขยับไป 200 เครื่อง                                                                                                                                                                                                                                                  |
 | ----------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -370,24 +474,6 @@ docker compose down -v               # หยุด + ล้างข้อม�
 ## เอกสารอื่นที่เกี่ยวข้อง
 
 - [`Direction.md`](Direction.md) — โจทย์ต้นฉบับ
-
-## กรณีศึกษาอ้างอิง — SCG / Nawaplastic Industries (NPI)
-
-โจทย์อิงบริบทโรงงานผลิตข้อต่อ PVC ด้วย Injection Molding ซึ่งตรงกับ **Nawaplastic Industries Co., Ltd. (NPI)** บริษัทในเครือ SCG Chemicals ก่อตั้งปี 1970 โรงงานหลักที่ Ban Khai จังหวัดระยอง
-
-**ข้อมูลที่ยืนยันได้จากแหล่งสาธารณะ:**
-
-| ประเด็น                        | ข้อมูลที่พบ                                                                                                                               | แหล่งอ้างอิง                               |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| Digital platform ที่มีอยู่แล้ว | SCGC มีระบบ "DRS by REPCO NEX" เชื่อมกับ Unified Operations Center (UOC) ที่ระยอง สำหรับบริหารประสิทธิภาพเครื่องจักรและสินทรัพย์ทั้งเครือ | SCGC News, ก.ย. 2025                       |
-| ระดับ Automation               | Nawaplastic มี robot density ระดับ best-in-class ของโลกในสายผลิตท่อ/ข้อต่อ PVC                                                            | SCGC News, ก.ค. 2025                       |
-| สถานะธุรกิจ                    | อุตสาหกรรมปิโตรเคมีตกต่ำยาวนานกว่าปกติ บริษัทเน้นกลยุทธ์ High Value-Added (HVA) และ green polymer                                         | SCGC News, ก.ค. 2025                       |
-| วัฒนธรรม Safety/Quality        | Prime Minister's Industry Award, Kano Quality Award (Gold), Thailand 5S Award (Diamond), CSR-DIW Continuous Award ต่อเนื่องถึง 2025       | npi-pipe.com/aboutus, SCGC News มี.ค. 2026 |
-| โครงสร้างองค์กร                | โรงงานในเครือข่ายภูมิภาค: ระยอง, สระบุรี, กัมพูชา, เมียนมา, อินโดนีเซีย, เวียดนาม                                                         | nawaplastic.com                            |
-
-**นัยต่อ Gap Analysis:** ข้อ 1.4 — robot density สูงหมายความว่าจำนวนคนเฝ้าเครื่องต่อไลน์ต่ำกว่าปกติมาก ระบบ monitoring จึงทำหน้าที่แทนสายตาคนได้จริง ข้อ 1.6 — มี UOC/DRS อยู่แล้วในระดับเครือ Prototype ควรออกแบบให้เข้ากันได้เชิงแนวคิดกับแพลตฟอร์มนี้ และภาวะตลาดขาลงทำให้การควบคุมต้นทุนผ่าน digital monitoring สำคัญเชิงกลยุทธ์สูงกว่าปกติ
-
-**ข้อมูลที่ไม่เปิดเผยต่อสาธารณะ** (ตารางเวลาการผลิต, จำนวนพนักงานระดับโรงงาน, ยี่ห้อเครื่องจักร, การแยกสิทธิ์ IT/OT เฉพาะของ NPI) — ใช้กรอบกฎหมาย/มาตรฐานสากลแทนการเดา ระบุไว้ชัดเจนว่าเป็น **Assumption** ไม่ใช่ข้อเท็จจริงที่ยืนยันได้ (เช่น สมมติสายการผลิตเดิน 24/7 อ้างอิง Thailand Labour Protection Act B.E. 2541 มาตรา 23-25 แทนตารางกะจริงที่ไม่เปิดเผย)
 
 ## มาตรฐานอ้างอิงทั้งหมด
 
