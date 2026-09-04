@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { DEMO_MODE, REPO_URL } from "../lib/api";
+import { DEMO_MODE, MOCK, REPO_URL, MAIN_BRANCH_URL } from "../lib/demo";
 
 const CLONE_CMD = `git clone ${REPO_URL}
 cd production-monitoring
@@ -7,24 +7,25 @@ cp .env.example .env
 docker compose up --build`;
 
 // Thin strip under the nav so it's obvious up front that writes are disabled,
-// before anyone clicks a save button. Rendered only in the demo build.
+// before anyone clicks a save button. Rendered only in the demo / mock builds.
 export function DemoBanner() {
   if (!DEMO_MODE) return null;
   return (
     <div className="demo-banner">
       <span className="demo-banner-dot" aria-hidden />
-      Read-only demo — live data is real, but editing is disabled.{" "}
-      <a href={REPO_URL} target="_blank" rel="noreferrer">
-        Run it locally
+      {MOCK
+        ? "Static demo — synthetic data, no backend."
+        : "Read-only demo — live data is real, but editing is disabled."}{" "}
+      <a href={MAIN_BRANCH_URL} target="_blank" rel="noreferrer">
+        Run the full stack locally
       </a>{" "}
-      to try the write features.
+      to change anything.
     </div>
   );
 }
 
-// Listens for the "demo-locked" window event fired by lib/api.ts whenever a
-// write is attempted (client-side in demo mode, or on a 403 READ_ONLY_DEMO from
-// the backend) and explains how to get the full thing.
+// Listens for the "demo-locked" window event fired by lib/api.ts / lib/mock
+// whenever a write is attempted and explains how to get the real thing.
 export function DemoLockModal() {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -66,19 +67,20 @@ export function DemoLockModal() {
       >
         <h2 id="demo-modal-title">Run it locally to change data</h2>
         <p>
-          This is a public, read-only deployment. Every screen is live off real
-          telemetry, but anything that writes to the backend — registering
-          machines, editing ERP master data, retuning simulators, importing jobs
-          — is disabled here.
+          {MOCK
+            ? "This is a static preview — the screens run on synthetic data generated in your browser, with no backend behind them."
+            : "This is a public, read-only deployment. Every screen is live, but anything that writes to the backend is disabled here."}{" "}
+          The full stack — real backend, database and live simulators — is on the{" "}
+          <strong>main</strong> branch.
         </p>
-        <p>Clone the repository and bring the full stack up with Docker:</p>
+        <p>Clone it and bring everything up with Docker:</p>
         <pre className="demo-modal-code">{CLONE_CMD}</pre>
         <div className="demo-modal-actions">
           <button type="button" onClick={copy}>
             {copied ? "Copied ✓" : "Copy commands"}
           </button>
-          <a href={REPO_URL} target="_blank" rel="noreferrer">
-            Open repository →
+          <a href={MAIN_BRANCH_URL} target="_blank" rel="noreferrer">
+            Open the main branch →
           </a>
           <button type="button" className="demo-modal-dismiss" onClick={() => setOpen(false)}>
             Dismiss

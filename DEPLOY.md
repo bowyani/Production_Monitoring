@@ -1,9 +1,44 @@
+# Deploying the demo
+
+> **This branch (`deploy/render-static-mock`) is the fully static demo.** It has
+> no backend — the dashboard runs on synthetic data generated in the browser
+> (`dashboard/src/lib/mock/*`) with a fake live feed, and every write pops a
+> dialog pointing people at the **main** branch for the real thing. Jump to
+> [Fully static demo on Render](#fully-static-demo-on-render).
+>
+> The rest of this file describes the heavier **read-only demo** (real backend,
+> writes disabled) that lives on `main` / `feat/read-only-demo`.
+
+## Fully static demo on Render
+
+`render.yaml` on this branch defines a single **free static site**. Nothing to
+configure:
+
+1. Edit `render.yaml` — set `VITE_REPO_URL` and `VITE_MAIN_BRANCH_URL` to your
+   repo.
+2. Render Dashboard → New → Blueprint → pick this repo and the
+   `deploy/render-static-mock` branch.
+3. Done. `https://<name>.onrender.com` serves the dashboard; it never sleeps
+   (static sites are always on) and costs nothing.
+
+Local check of this exact build:
+
+```bash
+cd dashboard
+VITE_MOCK=true npm run build && npm run preview
+```
+
+To refresh the demo, just push to this branch — Render rebuilds. There is no
+database to reset; every page load starts the in-browser simulation fresh.
+
+---
+
 # Deploying the read-only demo
 
-The public demo is the whole stack running normally — real Postgres, MQTT broker
-and simulators pushing live telemetry — with **writes disabled** so anyone can
-click around without breaking it. A write attempt shows a dialog explaining how
-to run the full thing locally.
+The read-only demo is the whole stack running normally — real Postgres, MQTT
+broker and simulators pushing live telemetry — with **writes disabled** so anyone
+can click around without breaking it. A write attempt shows a dialog explaining
+how to run the full thing locally.
 
 Two layers enforce it:
 
@@ -71,16 +106,17 @@ git pull
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
-## Alternative: Render (`render.yaml`)
+## Alternative: read-only demo on Render
 
-Because the demo overlay already dropped the Docker-socket dependency, the stack
-also fits Render's Blueprint model — managed Postgres, an internal broker, the
-backend as a web service (TLS + WebSockets come free), the dashboard as a static
-site, and simulators as workers. `render.yaml` at the repo root defines all of
-it.
+Because the demo overlay already dropped the Docker-socket dependency, the
+read-only stack also fits Render's Blueprint model — managed Postgres, an
+internal broker, the backend as a web service (TLS + WebSockets come free), the
+dashboard as a static site, and simulators as workers. The **full-stack**
+`render.yaml` lives on `main` / `feat/read-only-demo` (on this branch
+`render.yaml` is the static-only one described at the top).
 
-Steps: Render Dashboard → New → Blueprint → pick this repo. After the first
-deploy, fill the env vars marked `sync: false`:
+Steps: Render Dashboard → New → Blueprint → pick this repo on that branch. After
+the first deploy, fill the env vars marked `sync: false`:
 
 | Service | Var | Value |
 | --- | --- | --- |

@@ -1,4 +1,6 @@
 import { useEffect, useRef } from "react";
+import { MOCK } from "./demo";
+import { subscribeMockLive } from "./mock/mockSocket";
 
 const WS_URL = import.meta.env.VITE_WS_URL;
 
@@ -25,6 +27,10 @@ export function useLiveSocket(onEvent: (msg: LiveEvent) => void) {
   handlerRef.current = onEvent;
 
   useEffect(() => {
+    if (MOCK) {
+      return subscribeMockLive((msg) => handlerRef.current(msg as LiveEvent));
+    }
+
     let socket: WebSocket;
     let reconnectTimer: ReturnType<typeof setTimeout>;
 

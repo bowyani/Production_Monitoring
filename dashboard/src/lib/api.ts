@@ -1,33 +1,14 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL;
+import { MOCK, DEMO_MODE, DemoLockedError, notifyDemoLocked, isDemoLocked } from "./demo";
+import { mockApi } from "./mock/mockApi";
 
-// ---- read-only demo guard -------------------------------------------------
-// When VITE_DEMO_MODE=true this build is the public "facade": the dashboard is
-// fully live off real telemetry, but any write is stopped here (and, as a
-// backstop, by the backend returning 403 READ_ONLY_DEMO) and turned into a
-// dialog telling the visitor to clone the repo and run it locally.
-export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
-export const REPO_URL =
-  import.meta.env.VITE_REPO_URL ?? "https://github.com/your-username/production-monitoring";
+const API_BASE = import.meta.env.VITE_API_BASE_URL;
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS", undefined]);
 
-export class DemoLockedError extends Error {
-  constructor() {
-    super("This is a read-only demo — run it locally to change data.");
-    this.name = "DemoLockedError";
-  }
-}
-
-// Broadcast so <DemoLockModal> can pop up regardless of which component fired
-// the request. Components still get a rejected promise they can ignore.
-export function notifyDemoLocked() {
-  window.dispatchEvent(new CustomEvent("demo-locked"));
-}
-
-function isDemoLocked(status: number, body: unknown): boolean {
-  return status === 403 && !!body && (body as { error?: string }).error === "READ_ONLY_DEMO";
-}
-// -------------------------------------------------------------------------
+// Re-exported for existing importers (DemoLockModal, pages) — canonical home is
+// ./demo now.
+export { DEMO_MODE, DemoLockedError, notifyDemoLocked };
+export { REPO_URL, MAIN_BRANCH_URL } from "./demo";
 
 // Coarse column every view reads. "MQTT"/"MANUAL" were renamed to these when
 // the connection model was added (see backend migration
@@ -388,7 +369,7 @@ function qs(params: Record<string, string | undefined>) {
   return entries.length ? `?${new URLSearchParams(entries as [string, string][]).toString()}` : "";
 }
 
-export const api = {
+const realApi = {
   getMachines: () => request<Machine[]>("/machines"),
   getActiveAlarms: () => request<Alarm[]>("/alarms/active"),
   getJob: (jobNumber: string) => request<ProductionJob>(`/jobs/${encodeURIComponent(jobNumber)}`),
@@ -511,3 +492,8 @@ export const api = {
       { method: "PATCH", body: JSON.stringify(patch) }
     ),
 };
+
+export type Api = typeof realApi;
+
+// VITE_MOCK build: no backend, lib/mock serves everything.
+export const api: Api = MOCK ? mockApi : realApi;
