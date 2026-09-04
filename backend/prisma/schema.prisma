@@ -23,21 +23,84 @@ model Machine {
   // have to a "last seen".
   lastImportedAt    DateTime? @map("last_imported_at")
   isActive          Boolean   @default(true) @map("is_active")
-  // "MQTT" = connected machine/simulator publishing telemetry directly.
-  // "MANUAL" = legacy machine with no data connection — history comes only
-  // from CSV import (see GAP_ANALYSIS §1.4 "manual data entry fallback").
-  dataSource        String    @default("MQTT") @map("data_source")
+  // How this machine's data reaches the system — the coarse-grained view.
+  // The fine-grained connection details (gateway, Modbus slave/registers)
+  // live on MachineConnectionConfig; this stays as a fast, denormalised
+  // column every view already reads.
+  //   "SIMULATOR"      = prototype simulator container publishing MQTT itself
+  //                      (also what a bare self-register defaults to).
+  //   "MODBUS_GATEWAY" = real PLC polled over Modbus by a Protocol Gateway
+  //                      that publishes the same MQTT payload (see README
+  //                      "ถ้าเป็นเครื่องจักรจริง จะต่างจาก Simulator ตรงไหนบ้าง").
+  //   "MANUAL_CSV"     = legacy machine with no data connection — history
+  //                      comes only from CSV import (GAP_ANALYSIS §1.4).
+  // Migrated from the old "MQTT"/"MANUAL" pair — see the
+  // add_gateway_and_connection_config migration.
+  dataSource        String    @default("SIMULATOR") @map("data_source")
   lastMaintenanceAt DateTime  @default(now()) @map("last_maintenance_at")
   createdAt         DateTime  @default(now()) @map("created_at")
   createdBy         String?   @map("created_by")
 
-  asset        ErpMachineAsset       @relation(fields: [machineId], references: [assetId])
-  telemetry    MachineTelemetry[]
-  statusEvents MachineStatusEvent[]
-  jobs         ProductionJob[]
-  alarms       Alarm[]
+  asset            ErpMachineAsset          @relation(fields: [machineId], references: [assetId])
+  connectionConfig MachineConnectionConfig?
+  telemetry        MachineTelemetry[]
+  statusEvents     MachineStatusEvent[]
+  jobs             ProductionJob[]
+  alarms           Alarm[]
 
   @@map("machines")
+}
+
+// A Protocol Gateway / Edge Adapter — the box that polls real PLCs over
+// Modbus and republishes their readings as the same MQTT telemetry payload
+// the simulator emits, so nothing downstream of the broker changes (README
+// "ตัวกลางที่ต้องเพิ่มเข้ามา: Protocol Gateway"). A prototype has none of
+// these; this table is what an Admin fills in when registering a physical
+// machine instead of spinning up a simulator container.
+model Gateway {
+  gatewayId       String    @id @default(cuid()) @map("gateway_id")
+  ipAddress       String    @map("ip_address")
+  location        String
+  // Last time this gateway reported in. NULL = never seen. A real deployment
+  // would flip `status` from a heartbeat watchdog (same idea as watchdog.ts
+  // does for machines); here it is set/cleared by hand from the Gateway
+  // Management page.
+  lastHeartbeatAt DateTime? @map("last_heartbeat_at")
+  status          String    @default("OFFLINE") // "ONLINE" | "OFFLINE"
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  connections MachineConnectionConfig[]
+
+  @@map("gateways")
+}
+
+// Per-machine connection details. One row per Machine (machine_id is both PK
+// and the FK, so the relation is 1:1). SIMULATOR / MANUAL_CSV rows carry
+// only connection_type; MODBUS_TCP / MODBUS_RTU rows also carry the gateway
+// link and the Modbus addressing an Admin typed in at registration time.
+model MachineConnectionConfig {
+  machineId String @id @map("machine_id")
+  // "SIMULATOR" | "MODBUS_TCP" | "MODBUS_RTU" | "MANUAL_CSV"
+  connectionType String  @map("connection_type")
+  gatewayId      String? @map("gateway_id")
+  modbusSlaveId  Int?    @map("modbus_slave_id")
+  modbusIp       String? @map("modbus_ip")
+  modbusPort     Int?    @map("modbus_port")
+  // Raw Modbus register addresses the gateway reads and maps into the
+  // telemetry payload, e.g. { "pressure": 40001, "temperature": 40002 }.
+  registerMap Json?    @map("register_map")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  machine Machine  @relation(fields: [machineId], references: [machineId], onDelete: Cascade)
+  gateway Gateway? @relation(fields: [gatewayId], references: [gatewayId])
+
+  // No two machines on the same gateway may claim the same Modbus slave id.
+  // Postgres treats NULLs as distinct, so the many SIMULATOR/MANUAL_CSV rows
+  // (gateway_id = NULL, modbus_slave_id = NULL) don't collide with each other.
+  @@unique([gatewayId, modbusSlaveId])
+  @@map("machine_connection_configs")
 }
 
 // Mock ERP master data for machine assets — same idea as ProductSku below,
