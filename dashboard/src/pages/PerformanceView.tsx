@@ -118,7 +118,7 @@ export default function PerformanceView() {
       .adminListMachines()
       .then((list) => {
         setManualMachineCount(
-          list.filter((m) => m.dataSource === "MANUAL").length,
+          list.filter((m) => m.dataSource === "MANUAL_CSV").length,
         );
         setInactiveMachineCount(list.filter((m) => !m.isActive).length);
       })

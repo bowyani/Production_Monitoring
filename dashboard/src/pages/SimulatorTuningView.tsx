@@ -139,7 +139,7 @@ export default function SimulatorTuningView() {
     api
       .adminListMachines()
       .then((all) => {
-        const simulated = all.filter((m) => m.dataSource === "MQTT");
+        const simulated = all.filter((m) => m.dataSource === "SIMULATOR");
         setMachines(simulated);
         if (simulated.length > 0) setMachineId((prev) => prev || simulated[0].machineId);
       })

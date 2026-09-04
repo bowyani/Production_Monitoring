@@ -8,6 +8,7 @@ import ChiefOperatorView from "./pages/ChiefOperatorView";
 import ProductionView from "./pages/ProductionView";
 import PerformanceView from "./pages/PerformanceView";
 import ImportView from "./pages/ImportView";
+import GatewayView from "./pages/GatewayView";
 import SimulatorTuningView from "./pages/SimulatorTuningView";
 
 const NAV_GROUPS: {
@@ -27,6 +28,7 @@ const NAV_GROUPS: {
     label: "Management",
     links: [
       { to: "/chief-operator", label: "Machine Management" },
+      { to: "/gateways", label: "Gateway Management" },
       { to: "/import", label: "Manual Import" },
       { to: "/simulator-tuning", label: "Simulator Tuning" },
     ],
@@ -90,6 +92,7 @@ export default function App() {
         <Route path="/kpi" element={<KpiView />} />
         <Route path="/erp" element={<ErpView />} />
         <Route path="/chief-operator" element={<ChiefOperatorView />} />
+        <Route path="/gateways" element={<GatewayView />} />
         <Route path="/admin" element={<AdminView />} />
         <Route path="/import" element={<ImportView />} />
         <Route path="/simulator-tuning" element={<SimulatorTuningView />} />

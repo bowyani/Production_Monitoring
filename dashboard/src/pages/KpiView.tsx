@@ -77,10 +77,10 @@ export default function KpiView() {
       .adminListMachines()
       .then((list) => {
         setLiveMachineCount(
-          list.filter((m) => m.isActive && m.dataSource === "MQTT").length,
+          list.filter((m) => m.isActive && m.dataSource !== "MANUAL_CSV").length,
         );
         setManualMachineCount(
-          list.filter((m) => m.isActive && m.dataSource === "MANUAL").length,
+          list.filter((m) => m.isActive && m.dataSource === "MANUAL_CSV").length,
         );
         setInactiveMachineCount(list.filter((m) => !m.isActive).length);
       })

@@ -121,8 +121,16 @@ export default function OperatorView() {
     }
   });
 
-  const mqttMachines = useMemo(() => visibleMachines.filter((m) => m.dataSource === "MQTT"), [visibleMachines]);
-  const manualMachines = useMemo(() => visibleMachines.filter((m) => m.dataSource === "MANUAL"), [visibleMachines]);
+  // "Live" = anything with a real telemetry feed (a simulator container or a
+  // Modbus machine republished by a Gateway); "manual" = CSV-import-only.
+  const mqttMachines = useMemo(
+    () => visibleMachines.filter((m) => m.dataSource !== "MANUAL_CSV"),
+    [visibleMachines]
+  );
+  const manualMachines = useMemo(
+    () => visibleMachines.filter((m) => m.dataSource === "MANUAL_CSV"),
+    [visibleMachines]
+  );
 
   const mqttPage = usePagination(mqttMachines, 10);
   const manualPage = usePagination(manualMachines, 10);
@@ -154,7 +162,7 @@ export default function OperatorView() {
           ))}
         </div>
 
-        <h3>MQTT — New Machines</h3>
+        <h3>Connected — Live Data</h3>
         <div className="table-card">
           <div className="table-scroll">
             <table>
@@ -205,7 +213,7 @@ export default function OperatorView() {
                 })}
                 {mqttMachines.length === 0 && (
                   <tr className="row-empty">
-                    <td colSpan={10}>No MQTT machines in this zone.</td>
+                    <td colSpan={10}>No connected machines in this zone.</td>
                   </tr>
                 )}
               </tbody>
@@ -220,7 +228,7 @@ export default function OperatorView() {
           />
         </div>
 
-        <h3>MANUAL — Old Machines</h3>
+        <h3>Manual — CSV Import Only</h3>
         <div className="table-card">
           <div className="table-scroll">
             <table>
@@ -270,7 +278,7 @@ export default function OperatorView() {
                 })}
                 {manualMachines.length === 0 && (
                   <tr className="row-empty">
-                    <td colSpan={10}>No MANUAL machines in this zone.</td>
+                    <td colSpan={10}>No manual machines in this zone.</td>
                   </tr>
                 )}
               </tbody>

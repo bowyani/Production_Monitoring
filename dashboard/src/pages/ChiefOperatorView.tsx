@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   api,
   type MaintenanceOverview,
   type MachineMaintenance,
   type Machine,
   type ErpMachineAsset,
+  type Gateway,
 } from "../lib/api";
+import { connectionMeta } from "../lib/connection";
 import { usePagination } from "../lib/usePagination";
 import Pagination from "../components/Pagination";
 
@@ -13,11 +16,25 @@ function hrs(v: number | null) {
   return v == null ? "—" : `${v.toFixed(1)}h`;
 }
 
+// A key/value row of the register_map editor. Kept as an array (not an
+// object) while editing so a half-typed duplicate/blank key doesn't drop
+// rows out from under the user.
+type RegisterRow = { key: string; value: string };
+
+type RegisterMap = Record<string, number>;
+
+function registerRowsToMap(rows: RegisterRow[]): RegisterMap | undefined {
+  const entries = rows
+    .map((r) => [r.key.trim(), Number(r.value)] as const)
+    .filter(([k, v]) => k !== "" && Number.isFinite(v));
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
 function maintenanceStatus(m: MachineMaintenance): {
   label: string;
   color: string;
 } {
-  if (m.dataSource === "MANUAL")
+  if (m.dataSource === "MANUAL_CSV")
     return { label: "No live data", color: "#57606a" };
   if (m.maintenanceIntervalHours == null)
     return { label: "No interval set", color: "#57606a" };
@@ -37,8 +54,19 @@ export default function ChiefOperatorView() {
   // longer owns bringing a machine online; that's an operations decision).
   const [machines, setMachines] = useState<Machine[]>([]);
   const [assets, setAssets] = useState<ErpMachineAsset[]>([]);
+  const [gateways, setGateways] = useState<Gateway[]>([]);
   const [assetId, setAssetId] = useState("");
-  const [dataSource, setDataSource] = useState<"MQTT" | "MANUAL">("MQTT");
+  // "simulator" = demo/test path (POST /admin/machines, may spin up a
+  // container); "physical" = real PLC reached over Modbus through a Gateway
+  // (POST /admin/machines/manual-register, no container).
+  const [mode, setMode] = useState<"simulator" | "physical">("simulator");
+  const [dataSource, setDataSource] = useState<"SIMULATOR" | "MANUAL_CSV">("SIMULATOR");
+  const [connectionType, setConnectionType] = useState<"MODBUS_TCP" | "MODBUS_RTU">("MODBUS_TCP");
+  const [gatewayId, setGatewayId] = useState("");
+  const [modbusSlaveId, setModbusSlaveId] = useState("");
+  const [modbusIp, setModbusIp] = useState("");
+  const [modbusPort, setModbusPort] = useState("502");
+  const [registerRows, setRegisterRows] = useState<RegisterRow[]>([{ key: "", value: "" }]);
   const [machineFormError, setMachineFormError] = useState<string | null>(null);
   const [machineNotice, setMachineNotice] = useState<string | null>(null);
 
@@ -62,6 +90,7 @@ export default function ChiefOperatorView() {
   function refreshMachines() {
     api.adminListMachines().then(setMachines).catch(console.error);
     api.getMachineAssets().then(setAssets).catch(console.error);
+    api.getGateways().then(setGateways).catch(console.error);
   }
 
   useEffect(() => {
@@ -86,22 +115,50 @@ export default function ChiefOperatorView() {
 
   const unregisteredAssets = assets.filter((a) => !a.registered);
 
+  function resetMachineForm() {
+    setAssetId("");
+    setModbusSlaveId("");
+    setModbusIp("");
+    setModbusPort("502");
+    setRegisterRows([{ key: "", value: "" }]);
+  }
+
   async function addMachine(e: React.FormEvent) {
     e.preventDefault();
     setMachineFormError(null);
     setMachineNotice(null);
     try {
-      const result = await api.adminCreateMachine({ assetId, dataSource });
-      setAssetId("");
-      if (dataSource === "MQTT") {
-        setMachineNotice(
-          result.simulator?.ok
-            ? `Simulator container ${result.simulator.reused ? "reused" : "started"} for ${result.machineId} — it will show RUN/telemetry within a few seconds, no manual steps needed.`
-            : `Machine registered, but the simulator container couldn't be started automatically (${result.simulator?.reason ?? "Docker management unavailable"}). Start it manually if needed.`
-        );
+      if (mode === "simulator") {
+        const result = await api.adminCreateMachine({ assetId, dataSource });
+        if (dataSource === "SIMULATOR") {
+          setMachineNotice(
+            result.simulator?.ok
+              ? `Simulator container ${result.simulator.reused ? "reused" : "started"} for ${result.machineId} — it will show RUN/telemetry within a few seconds, no manual steps needed.`
+              : `Machine registered, but the simulator container couldn't be started automatically (${result.simulator?.reason ?? "Docker management unavailable"}). Start it manually if needed.`
+          );
+        } else {
+          setMachineNotice(`Machine registered as Manual CSV — no simulator, use the Import page to backfill its data.`);
+        }
       } else {
-        setMachineNotice(`Machine registered as MANUAL — no simulator, use the Import page to backfill its data.`);
+        const slave = Number(modbusSlaveId);
+        if (!gatewayId) throw new Error("pick a gateway");
+        if (!Number.isInteger(slave) || slave < 0 || slave > 247) throw new Error("Modbus Slave ID must be 0–247");
+        if (connectionType === "MODBUS_TCP" && (!modbusIp.trim() || !modbusPort.trim()))
+          throw new Error("Modbus TCP needs an IP and port");
+        const result = await api.adminManualRegisterMachine({
+          assetId,
+          connectionType,
+          gatewayId,
+          modbusSlaveId: slave,
+          modbusIp: connectionType === "MODBUS_TCP" ? modbusIp.trim() : undefined,
+          modbusPort: connectionType === "MODBUS_TCP" ? Number(modbusPort) : undefined,
+          registerMap: registerRowsToMap(registerRows),
+        });
+        setMachineNotice(
+          `Physical machine ${result.machineId} registered on gateway ${gatewayId} (slave ${slave}). No container — a Gateway must poll it and publish MQTT under this ID.`
+        );
       }
+      resetMachineForm();
       refreshMachines();
       await load();
     } catch (err) {
@@ -112,7 +169,7 @@ export default function ChiefOperatorView() {
   async function toggleActive(m: Machine) {
     setMachineNotice(null);
     const result = await api.adminPatchMachine(m.machineId, { isActive: !m.isActive });
-    if (m.dataSource === "MQTT" && result.simulator && !result.simulator.ok) {
+    if (m.dataSource === "SIMULATOR" && result.simulator && !result.simulator.ok) {
       setMachineNotice(`Status updated, but simulator container control failed: ${result.simulator.reason}`);
     }
     refreshMachines();
@@ -128,8 +185,37 @@ export default function ChiefOperatorView() {
 
       <section>
         <h2>Register New Machine</h2>
-        <form onSubmit={addMachine} className="toolbar">
-          <select value={assetId} onChange={(e) => setAssetId(e.target.value)} style={{ minWidth: 260 }} required>
+        <p style={{ fontSize: 12, color: "#57606a", maxWidth: 720 }}>
+          A prototype simulator publishes MQTT itself; a real machine speaks Modbus and is reached through a{" "}
+          <Link to="/gateways">Gateway</Link> that republishes it. Pick the mode that matches what's actually
+          on the other end.
+        </p>
+
+        <div className="pill-group" style={{ marginBottom: 12 }}>
+          <button
+            type="button"
+            className={"pill" + (mode === "simulator" ? " active" : "")}
+            onClick={() => {
+              setMode("simulator");
+              setMachineFormError(null);
+            }}
+          >
+            Simulator (Demo/Test)
+          </button>
+          <button
+            type="button"
+            className={"pill" + (mode === "physical" ? " active" : "")}
+            onClick={() => {
+              setMode("physical");
+              setMachineFormError(null);
+            }}
+          >
+            Physical Machine
+          </button>
+        </div>
+
+        <form onSubmit={addMachine} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <select value={assetId} onChange={(e) => setAssetId(e.target.value)} style={{ minWidth: 260, padding: 6 }} required>
             <option value="" disabled>
               Select ERP asset…
             </option>
@@ -140,14 +226,113 @@ export default function ChiefOperatorView() {
               </option>
             ))}
           </select>
-          <select value={dataSource} onChange={(e) => setDataSource(e.target.value as "MQTT" | "MANUAL")}>
-            <option value="MQTT">MQTT (connected / simulator)</option>
-            <option value="MANUAL">MANUAL (legacy — no connection)</option>
-          </select>
-          <button type="submit" disabled={!assetId}>
-            Add
+
+          {mode === "simulator" && (
+            <select
+              value={dataSource}
+              onChange={(e) => setDataSource(e.target.value as "SIMULATOR" | "MANUAL_CSV")}
+              style={{ padding: 6 }}
+            >
+              <option value="SIMULATOR">Simulator container (live MQTT)</option>
+              <option value="MANUAL_CSV">Manual CSV (legacy — no connection)</option>
+            </select>
+          )}
+
+          {mode === "physical" && (
+            <>
+              <select
+                value={connectionType}
+                onChange={(e) => setConnectionType(e.target.value as "MODBUS_TCP" | "MODBUS_RTU")}
+                style={{ padding: 6 }}
+              >
+                <option value="MODBUS_TCP">Modbus TCP</option>
+                <option value="MODBUS_RTU">Modbus RTU</option>
+              </select>
+              <select value={gatewayId} onChange={(e) => setGatewayId(e.target.value)} style={{ padding: 6, minWidth: 200 }} required>
+                <option value="" disabled>
+                  Select gateway…
+                </option>
+                {gateways.map((g) => (
+                  <option key={g.gatewayId} value={g.gatewayId}>
+                    {g.gatewayId} — {g.location} ({g.ipAddress})
+                  </option>
+                ))}
+              </select>
+              <input
+                value={modbusSlaveId}
+                onChange={(e) => setModbusSlaveId(e.target.value)}
+                placeholder="Slave ID (0–247)"
+                inputMode="numeric"
+                style={{ padding: 6, width: 130 }}
+                required
+              />
+              {connectionType === "MODBUS_TCP" && (
+                <>
+                  <input
+                    value={modbusIp}
+                    onChange={(e) => setModbusIp(e.target.value)}
+                    placeholder="Modbus IP (e.g. 192.168.10.15)"
+                    style={{ padding: 6, width: 190 }}
+                    required
+                  />
+                  <input
+                    value={modbusPort}
+                    onChange={(e) => setModbusPort(e.target.value)}
+                    placeholder="Port"
+                    inputMode="numeric"
+                    style={{ padding: 6, width: 80 }}
+                    required
+                  />
+                </>
+              )}
+            </>
+          )}
+
+          <button type="submit" disabled={!assetId || (mode === "physical" && !gatewayId)}>
+            {mode === "physical" ? "Register physical machine" : "Add"}
           </button>
         </form>
+
+        {mode === "physical" && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 12, color: "#57606a", marginBottom: 4 }}>
+              Register map — which raw Modbus register the gateway reads for each metric (e.g.{" "}
+              <code>pressure → 40001</code>).
+            </div>
+            {registerRows.map((row, i) => (
+              <div key={i} style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+                <input
+                  value={row.key}
+                  onChange={(e) =>
+                    setRegisterRows((rows) => rows.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)))
+                  }
+                  placeholder="metric (e.g. pressure)"
+                  style={{ padding: 6, width: 180 }}
+                />
+                <input
+                  value={row.value}
+                  onChange={(e) =>
+                    setRegisterRows((rows) => rows.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)))
+                  }
+                  placeholder="register (e.g. 40001)"
+                  inputMode="numeric"
+                  style={{ padding: 6, width: 150 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setRegisterRows((rows) => (rows.length > 1 ? rows.filter((_, j) => j !== i) : rows))}
+                  disabled={registerRows.length === 1}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            <button type="button" onClick={() => setRegisterRows((rows) => [...rows, { key: "", value: "" }])}>
+              + register
+            </button>
+          </div>
+        )}
+
         {machineFormError && <div className="notice notice-error">{machineFormError}</div>}
         {machineNotice && <div className="notice notice-success">{machineNotice}</div>}
       </section>
@@ -161,23 +346,30 @@ export default function ChiefOperatorView() {
                 <tr>
                   <th>ID</th>
                   <th>Name</th>
-                  <th>Source</th>
+                  <th>Connection</th>
                   <th>Active</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {machinesAdminPage.pageItems.map((m) => (
-                  <tr key={m.machineId}>
-                    <td>{m.machineId}</td>
-                    <td>{m.machineName}</td>
-                    <td>{m.dataSource}</td>
-                    <td>{m.isActive ? "yes" : "no"}</td>
-                    <td>
-                      <button onClick={() => toggleActive(m)}>{m.isActive ? "Deactivate" : "Activate"}</button>
-                    </td>
-                  </tr>
-                ))}
+                {machinesAdminPage.pageItems.map((m) => {
+                  const cm = connectionMeta(m.connectionType);
+                  return (
+                    <tr key={m.machineId}>
+                      <td>{m.machineId}</td>
+                      <td>{m.machineName}</td>
+                      <td>
+                        <span className="badge" style={{ background: cm.color }}>
+                          {cm.label}
+                        </span>
+                      </td>
+                      <td>{m.isActive ? "yes" : "no"}</td>
+                      <td>
+                        <button onClick={() => toggleActive(m)}>{m.isActive ? "Deactivate" : "Activate"}</button>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {machines.length === 0 && (
                   <tr className="row-empty">
                     <td colSpan={5}>No machines registered yet.</td>

@@ -33,7 +33,7 @@ export default function ImportView() {
       .adminListMachines()
       .then((list) => {
         setMachines(list);
-        const manual = list.find((m) => m.dataSource === "MANUAL");
+        const manual = list.find((m) => m.dataSource === "MANUAL_CSV");
         setMachineId((cur) => cur || manual?.machineId || list[0]?.machineId || "");
       })
       .catch(console.error);

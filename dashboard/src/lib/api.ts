@@ -1,5 +1,14 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL;
 
+// Coarse column every view reads. "MQTT"/"MANUAL" were renamed to these when
+// the connection model was added (see backend migration
+// add_gateway_and_connection_config).
+export type DataSource = "SIMULATOR" | "MODBUS_GATEWAY" | "MANUAL_CSV";
+
+// Precise connection kind, from MachineConnectionConfig. MODBUS_TCP/RTU both
+// roll up to data_source MODBUS_GATEWAY.
+export type ConnectionType = "SIMULATOR" | "MODBUS_TCP" | "MODBUS_RTU" | "MANUAL_CSV";
+
 export type Machine = {
   machineId: string;
   machineName: string;
@@ -8,7 +17,8 @@ export type Machine = {
   lastSeenAt: string | null;
   lastImportedAt: string | null;
   isActive: boolean;
-  dataSource: "MQTT" | "MANUAL";
+  dataSource: DataSource;
+  connectionType: ConnectionType | null;
   ratedPowerKw: number | null;
   laborCostPerHour: number | null;
   targetCycleTimeSec: number | null;
@@ -53,6 +63,34 @@ export type ErpJobOrder = {
   quantityOrdered: number;
   createdAt: string;
   updatedAt: string;
+};
+
+// Protocol Gateway (schema.prisma Gateway) — the box that polls real PLCs
+// over Modbus and republishes them as MQTT. `online` is derived server-side
+// from heartbeat freshness; `status` is the last written value.
+export type Gateway = {
+  gatewayId: string;
+  ipAddress: string;
+  location: string;
+  lastHeartbeatAt: string | null;
+  status: "ONLINE" | "OFFLINE";
+  online: boolean;
+  machineCount?: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+// One row of GET /admin/gateways/:id/machines — the machines bound to a gateway.
+export type GatewayMachine = {
+  machineId: string;
+  machineName: string;
+  connectionType: ConnectionType;
+  modbusSlaveId: number | null;
+  modbusIp: string | null;
+  modbusPort: number | null;
+  registerMap: Record<string, number> | null;
+  isActive: boolean;
+  status: string;
 };
 
 export type Alarm = {
@@ -173,7 +211,7 @@ export type MachineMaintenance = {
   machineId: string;
   machineName: string;
   machineModel: string | null;
-  dataSource: "MQTT" | "MANUAL";
+  dataSource: DataSource;
   runHoursSinceMaintenance: number;
   maintenanceIntervalHours: number | null;
   pctOfInterval: number | null;
@@ -314,11 +352,40 @@ export const api = {
     request<Alarm[]>(`/machines/${encodeURIComponent(machineId)}/alarms${qs({ from, to })}`),
   getKpiSummary: (from?: string, to?: string) => request<KpiSummary>(`/kpi/summary${qs({ from, to })}`),
   adminListMachines: () => request<Machine[]>("/admin/machines"),
-  adminCreateMachine: (data: { assetId: string; dataSource?: "MQTT" | "MANUAL" }) =>
+  adminCreateMachine: (data: { assetId: string; dataSource?: "SIMULATOR" | "MANUAL_CSV" }) =>
     request<Machine & { simulator?: { ok: boolean; reason?: string; reused?: boolean } }>("/admin/machines", {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  // Physical machine (Modbus via a Gateway) — no container is started.
+  adminManualRegisterMachine: (data: {
+    assetId: string;
+    connectionType: "MODBUS_TCP" | "MODBUS_RTU";
+    gatewayId: string;
+    modbusSlaveId: number;
+    modbusIp?: string;
+    modbusPort?: number;
+    registerMap?: Record<string, number>;
+  }) =>
+    request<Machine>("/admin/machines/manual-register", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  getGateways: () => request<Gateway[]>("/admin/gateways"),
+  createGateway: (data: { ipAddress: string; location: string; status?: "ONLINE" | "OFFLINE" }) =>
+    request<Gateway>("/admin/gateways", { method: "POST", body: JSON.stringify(data) }),
+  updateGateway: (
+    gatewayId: string,
+    data: { ipAddress?: string; location?: string; status?: "ONLINE" | "OFFLINE"; lastHeartbeatAt?: string | null }
+  ) =>
+    request<Gateway>(`/admin/gateways/${encodeURIComponent(gatewayId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  deleteGateway: (gatewayId: string) =>
+    fetch(`${API_BASE}/admin/gateways/${encodeURIComponent(gatewayId)}`, { method: "DELETE" }),
+  getGatewayMachines: (gatewayId: string) =>
+    request<GatewayMachine[]>(`/admin/gateways/${encodeURIComponent(gatewayId)}/machines`),
   adminPatchMachine: (machineId: string, data: { isActive?: boolean }) =>
     request<Machine & { simulator?: { ok: boolean; reason?: string } }>(
       `/admin/machines/${encodeURIComponent(machineId)}`,
