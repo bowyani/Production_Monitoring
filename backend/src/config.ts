@@ -1,5 +1,7 @@
 export const config = {
-  port: Number(process.env.BACKEND_PORT ?? 3000),
+  // PORT is what most PaaS hosts (Render, Railway, Fly) inject; BACKEND_PORT is
+  // the Compose/local knob. PORT wins so a Dockerfile deploy just works.
+  port: Number(process.env.PORT ?? process.env.BACKEND_PORT ?? 3000),
   mqttBrokerUrl: process.env.MQTT_BROKER_URL ?? "mqtt://localhost:1883",
   // Public "facade" demo: serve every GET normally (the dashboard stays fully
   // live off real telemetry) but reject any write with 403 READ_ONLY_DEMO so a
@@ -10,6 +12,10 @@ export const config = {
   repoUrl: process.env.REPO_URL ?? "https://github.com/your-username/production-monitoring",
   // Comma-separated allow-list for CORS. Unset = reflect any origin (dev default).
   corsOrigin: process.env.CORS_ORIGIN?.split(",").map((s) => s.trim()).filter(Boolean),
+  // Shared secret that lets internal services (the simulators' bootstrap calls)
+  // write even while demoReadOnly is on, so the demo comes up on a cold database
+  // without a separate seeding pass. Sent as the X-Internal-Token header.
+  internalToken: process.env.INTERNAL_API_TOKEN,
   watchdogOfflineThresholdSec: Number(
     process.env.BACKEND_WATCHDOG_OFFLINE_THRESHOLD_SEC ?? 15
   ),

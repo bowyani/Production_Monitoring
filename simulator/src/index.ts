@@ -4,6 +4,14 @@ const MACHINE_ID = process.env.MACHINE_ID ?? "IMM-01";
 const MACHINE_NAME = process.env.MACHINE_NAME ?? `Injection Molding Machine ${MACHINE_ID}`;
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL ?? "mqtt://localhost:1883";
 const BACKEND_API_URL = process.env.BACKEND_API_URL ?? "http://localhost:3000/api/v1";
+// Lets the bootstrap calls below through a backend running in read-only demo
+// mode (DEMO_READ_ONLY=true). Unset outside the demo — normal writes aren't
+// gated. Must match the backend's INTERNAL_API_TOKEN.
+const INTERNAL_API_TOKEN = process.env.INTERNAL_API_TOKEN;
+const bootstrapHeaders: Record<string, string> = {
+  "Content-Type": "application/json",
+  ...(INTERNAL_API_TOKEN ? { "X-Internal-Token": INTERNAL_API_TOKEN } : {}),
+};
 
 const PRODUCT_CODES = ["PVC-90-ELBOW", "PVC-110-TEE", "PVC-63-COUPLING"];
 
@@ -217,7 +225,7 @@ async function registerMachine() {
         `${BACKEND_API_URL}/erp/machine-assets/${encodeURIComponent(MACHINE_ID)}/bootstrap`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: bootstrapHeaders,
           body: JSON.stringify({ machineName: MACHINE_NAME, ...buildMockAssetDefaults(MACHINE_ID) }),
         }
       );
@@ -229,7 +237,7 @@ async function registerMachine() {
 
       const res = await fetch(`${BACKEND_API_URL}/admin/machines`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: bootstrapHeaders,
         body: JSON.stringify({
           assetId: MACHINE_ID,
           createdBy: "simulator-bootstrap",

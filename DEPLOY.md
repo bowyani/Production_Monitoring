@@ -71,6 +71,42 @@ git pull
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
+## Alternative: Render (`render.yaml`)
+
+Because the demo overlay already dropped the Docker-socket dependency, the stack
+also fits Render's Blueprint model — managed Postgres, an internal broker, the
+backend as a web service (TLS + WebSockets come free), the dashboard as a static
+site, and simulators as workers. `render.yaml` at the repo root defines all of
+it.
+
+Steps: Render Dashboard → New → Blueprint → pick this repo. After the first
+deploy, fill the env vars marked `sync: false`:
+
+| Service | Var | Value |
+| --- | --- | --- |
+| dashboard | `VITE_API_BASE_URL` | `https://<backend>.onrender.com/api/v1` |
+| dashboard | `VITE_WS_URL` | `wss://<backend>.onrender.com/live` |
+| backend | `CORS_ORIGIN` | `https://<dashboard>.onrender.com` |
+
+Then redeploy the dashboard so the new build picks up the URLs.
+
+Trade-offs vs. the single VPS above:
+
+- **Free instances sleep after ~15 min idle** — the live feed stops until the
+  next visitor wakes it (~50 s cold start). Put `backend` and `simulator-01` on
+  `starter` (~$7/mo each) for an always-on demo.
+- **Free Postgres is deleted after 30 days.** Use `starter`, or point
+  `DATABASE_URL` at a free external Neon/Supabase database.
+- **Background workers have no free plan**, so each extra simulated machine is a
+  billable instance. The Blueprint ships one; copy the block for more.
+- **Mosquitto on Render is finicky** (private service, no free plan, port
+  detection). Simpler to use a hosted broker — HiveMQ Cloud has a free tier;
+  set `MQTT_BROKER_URL` to its `mqtts://user:pass@host:8883` URL and delete the
+  `mqtt` service.
+
+Realistic always-on cost on Render lands around $15–20/mo; the $5 VPS running the
+Compose file does the same job for less, at the cost of managing the box.
+
 ## Running it locally (what the modal tells visitors)
 
 ```bash

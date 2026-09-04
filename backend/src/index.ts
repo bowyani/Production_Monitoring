@@ -25,6 +25,11 @@ if (config.demoReadOnly) {
   const SAFE = new Set(["GET", "HEAD", "OPTIONS"]);
   app.use("/api/v1", (req, res, next) => {
     if (SAFE.has(req.method)) return next();
+    // Internal services (simulator bootstrap) carry the shared secret so a
+    // fresh deployment still self-registers its machines.
+    if (config.internalToken && req.get("x-internal-token") === config.internalToken) {
+      return next();
+    }
     res.status(403).json({
       error: "READ_ONLY_DEMO",
       message:

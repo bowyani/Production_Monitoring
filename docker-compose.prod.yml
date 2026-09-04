@@ -32,6 +32,7 @@ services:
       REPO_URL: ${REPO_URL}
       CORS_ORIGIN: ${DEMO_PUBLIC_URL}
       DOCKER_MANAGEMENT_ENABLED: "false"
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
 
   dashboard:
     restart: unless-stopped
@@ -46,10 +47,16 @@ services:
 
   simulator-01:
     restart: unless-stopped
+    environment:
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
   simulator-02:
     restart: unless-stopped
+    environment:
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
   simulator-03:
     restart: unless-stopped
+    environment:
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
 
   caddy:
     image: caddy:2
