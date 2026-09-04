@@ -42,7 +42,7 @@ systemRouter.get("/admin/system-stats", async (_req, res) => {
   ] = await Promise.all([
     prisma.machine.count(),
     prisma.machine.count({ where: { isActive: true } }),
-    prisma.machine.count({ where: { dataSource: "MANUAL" } }),
+    prisma.machine.count({ where: { dataSource: "MANUAL_CSV" } }),
     prisma.machineTelemetry.count(),
     prisma.machineStatusEvent.count(),
     prisma.productionJob.count(),

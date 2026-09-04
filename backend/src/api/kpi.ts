@@ -13,12 +13,14 @@ kpiRouter.get("/kpi/summary", async (req, res) => {
     ? new Date(String(req.query.from))
     : new Date(to.getTime() - 24 * 60 * 60 * 1000);
 
-  // MANUAL machines have no status-event history (no telemetry to derive it
-  // from), so Availability would come out as a misleading 0% rather than
+  // MANUAL_CSV machines have no status-event history (no telemetry to derive
+  // it from), so Availability would come out as a misleading 0% rather than
   // "unknown". Excluding them entirely — surfaced explicitly in the
   // dashboard's blind-spot banner — is more honest than a fake number.
+  // SIMULATOR and MODBUS_GATEWAY machines both publish real MQTT telemetry,
+  // so both are in scope.
   const machines = await prisma.machine.findMany({
-    where: { isActive: true, dataSource: "MQTT" },
+    where: { isActive: true, dataSource: { not: "MANUAL_CSV" } },
     include: { asset: true },
   });
   const results = await Promise.all(machines.map((m) => computeMachineKpi(m, from, to)));

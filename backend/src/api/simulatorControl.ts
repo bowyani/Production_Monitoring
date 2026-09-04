@@ -65,8 +65,8 @@ type SimulatedMachineCheck =
 async function requireSimulatedMachine(machineId: string): Promise<SimulatedMachineCheck> {
   const machine = await prisma.machine.findUnique({ where: { machineId } });
   if (!machine) return { ok: false, status: 404, body: { error: "machine not found" } };
-  if (machine.dataSource !== "MQTT") {
-    return { ok: false, status: 400, body: { error: "only MQTT/simulator-backed machines have tunable params" } };
+  if (machine.dataSource !== "SIMULATOR") {
+    return { ok: false, status: 400, body: { error: "only simulator-backed machines have tunable params" } };
   }
   return { ok: true };
 }

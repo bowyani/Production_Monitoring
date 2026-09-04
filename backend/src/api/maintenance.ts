@@ -41,7 +41,7 @@ async function computeMachineMaintenance(machine: Machine & { asset: ErpMachineA
       ? Math.min(2, runHoursSinceMaintenance / maintenanceIntervalHours)
       : null;
 
-  if (machine.dataSource === "MANUAL") {
+  if (machine.dataSource === "MANUAL_CSV") {
     return {
       machineId: machine.machineId,
       machineName: machine.asset.machineName,
