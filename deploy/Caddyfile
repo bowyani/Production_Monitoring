@@ -1,0 +1,21 @@
+# Fronts the read-only demo. Caddy fetches and renews a Let's Encrypt cert for
+# {$DEMO_DOMAIN} automatically (ports 80 + 443 must be reachable from outside).
+{$DEMO_DOMAIN} {
+	encode gzip
+
+	# REST API + health check -> backend
+	@api path /api/* /health
+	handle @api {
+		reverse_proxy backend:3000
+	}
+
+	# WebSocket live feed -> backend (Caddy upgrades automatically)
+	handle /live {
+		reverse_proxy backend:3000
+	}
+
+	# Everything else -> the static dashboard (SPA)
+	handle {
+		reverse_proxy dashboard:5173
+	}
+}
