@@ -1,0 +1,72 @@
+# Public read-only demo overlay.
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Differences from the base stack:
+#   - Caddy terminates TLS and is the only thing bound to the host (80/443).
+#     Postgres / MQTT / backend / dashboard ports are no longer published.
+#   - Backend runs with DEMO_READ_ONLY=true and without the Docker socket, so
+#     the dynamic simulator manager is off; simulator-01..03 are fixed here.
+#   - Everything restarts unless explicitly stopped.
+name: production_monitoring
+
+services:
+  mosquitto:
+    restart: unless-stopped
+    ports: []
+
+  postgres:
+    restart: unless-stopped
+    ports: []
+
+  backend:
+    restart: unless-stopped
+    ports: []
+    # Drop the host Docker socket mount from the base file.
+    volumes: []
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      BACKEND_PORT: 3000
+      BACKEND_WATCHDOG_OFFLINE_THRESHOLD_SEC: ${BACKEND_WATCHDOG_OFFLINE_THRESHOLD_SEC}
+      DEMO_READ_ONLY: "true"
+      REPO_URL: ${REPO_URL}
+      CORS_ORIGIN: ${DEMO_PUBLIC_URL}
+      DOCKER_MANAGEMENT_ENABLED: "false"
+
+  dashboard:
+    restart: unless-stopped
+    ports: []
+    build:
+      context: ./dashboard
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+        VITE_WS_URL: ${VITE_WS_URL}
+        VITE_DEMO_MODE: "true"
+        VITE_REPO_URL: ${REPO_URL}
+
+  simulator-01:
+    restart: unless-stopped
+  simulator-02:
+    restart: unless-stopped
+  simulator-03:
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DEMO_DOMAIN: ${DEMO_DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - backend
+      - dashboard
+
+volumes:
+  caddy-data:
+  caddy-config:

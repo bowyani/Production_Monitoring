@@ -1,5 +1,34 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL;
 
+// ---- read-only demo guard -------------------------------------------------
+// When VITE_DEMO_MODE=true this build is the public "facade": the dashboard is
+// fully live off real telemetry, but any write is stopped here (and, as a
+// backstop, by the backend returning 403 READ_ONLY_DEMO) and turned into a
+// dialog telling the visitor to clone the repo and run it locally.
+export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
+export const REPO_URL =
+  import.meta.env.VITE_REPO_URL ?? "https://github.com/your-username/production-monitoring";
+
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS", undefined]);
+
+export class DemoLockedError extends Error {
+  constructor() {
+    super("This is a read-only demo — run it locally to change data.");
+    this.name = "DemoLockedError";
+  }
+}
+
+// Broadcast so <DemoLockModal> can pop up regardless of which component fired
+// the request. Components still get a rejected promise they can ignore.
+export function notifyDemoLocked() {
+  window.dispatchEvent(new CustomEvent("demo-locked"));
+}
+
+function isDemoLocked(status: number, body: unknown): boolean {
+  return status === 403 && !!body && (body as { error?: string }).error === "READ_ONLY_DEMO";
+}
+// -------------------------------------------------------------------------
+
 // Coarse column every view reads. "MQTT"/"MANUAL" were renamed to these when
 // the connection model was added (see backend migration
 // add_gateway_and_connection_config).
@@ -313,15 +342,45 @@ export type ImportResult = {
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  if (DEMO_MODE && !SAFE_METHODS.has(init?.method)) {
+    notifyDemoLocked();
+    throw new DemoLockedError();
+  }
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...init,
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
+    if (isDemoLocked(res.status, body)) {
+      notifyDemoLocked();
+      throw new DemoLockedError();
+    }
     throw new Error(body.error ? JSON.stringify(body.error) : `${res.status} ${res.statusText}`);
   }
   return res.json();
+}
+
+// Raw DELETE helper for the few callers that inspect the Response themselves.
+// In demo mode it never touches the network: it fires the dialog and hands back
+// a synthetic 403 so `res.ok` checks still fail cleanly.
+async function rawMutate(path: string, init: RequestInit): Promise<Response> {
+  if (DEMO_MODE && !SAFE_METHODS.has(init.method)) {
+    notifyDemoLocked();
+    return new Response(JSON.stringify({ error: "READ_ONLY_DEMO" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const res = await fetch(`${API_BASE}${path}`, init);
+  if (res.status === 403) {
+    const body = await res
+      .clone()
+      .json()
+      .catch(() => ({}));
+    if (isDemoLocked(res.status, body)) notifyDemoLocked();
+  }
+  return res;
 }
 
 function qs(params: Record<string, string | undefined>) {
@@ -383,7 +442,7 @@ export const api = {
       body: JSON.stringify(data),
     }),
   deleteGateway: (gatewayId: string) =>
-    fetch(`${API_BASE}/admin/gateways/${encodeURIComponent(gatewayId)}`, { method: "DELETE" }),
+    rawMutate(`/admin/gateways/${encodeURIComponent(gatewayId)}`, { method: "DELETE" }),
   getGatewayMachines: (gatewayId: string) =>
     request<GatewayMachine[]>(`/admin/gateways/${encodeURIComponent(gatewayId)}/machines`),
   adminPatchMachine: (machineId: string, data: { isActive?: boolean }) =>
@@ -414,7 +473,7 @@ export const api = {
       body: JSON.stringify(data),
     }),
   deleteMachineAsset: (assetId: string) =>
-    fetch(`${API_BASE}/erp/machine-assets/${encodeURIComponent(assetId)}`, { method: "DELETE" }),
+    rawMutate(`/erp/machine-assets/${encodeURIComponent(assetId)}`, { method: "DELETE" }),
   getAuditLog: (params: { targetId?: string; action?: string; limit?: string }) =>
     request<AuditLogEntry[]>(`/admin/audit-log${qs(params)}`),
   getSystemStats: () => request<SystemStats>("/admin/system-stats"),
@@ -430,7 +489,7 @@ export const api = {
       body: JSON.stringify(data),
     }),
   deleteSku: (productCode: string) =>
-    fetch(`${API_BASE}/erp/skus/${encodeURIComponent(productCode)}`, { method: "DELETE" }),
+    rawMutate(`/erp/skus/${encodeURIComponent(productCode)}`, { method: "DELETE" }),
   getErpJobOrders: () => request<ErpJobOrder[]>("/erp/job-orders"),
   setErpJobOrder: (jobNumber: string, data: { productCode: string; quantityOrdered: number }) =>
     request<ErpJobOrder>(`/erp/job-orders/${encodeURIComponent(jobNumber)}`, {
@@ -438,7 +497,7 @@ export const api = {
       body: JSON.stringify(data),
     }),
   deleteErpJobOrder: (jobNumber: string) =>
-    fetch(`${API_BASE}/erp/job-orders/${encodeURIComponent(jobNumber)}`, { method: "DELETE" }),
+    rawMutate(`/erp/job-orders/${encodeURIComponent(jobNumber)}`, { method: "DELETE" }),
   getErpSummary: (from?: string, to?: string) => request<ErpSummary>(`/erp/summary${qs({ from, to })}`),
   getMaintenanceOverview: (from?: string, to?: string) =>
     request<MaintenanceOverview>(`/maintenance/overview${qs({ from, to })}`),

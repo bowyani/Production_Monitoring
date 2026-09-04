@@ -10,6 +10,7 @@ import PerformanceView from "./pages/PerformanceView";
 import ImportView from "./pages/ImportView";
 import GatewayView from "./pages/GatewayView";
 import SimulatorTuningView from "./pages/SimulatorTuningView";
+import { DemoBanner, DemoLockModal } from "./components/DemoLockModal";
 
 const NAV_GROUPS: {
   label: string;
@@ -59,6 +60,8 @@ export default function App() {
   return (
     <BrowserRouter>
       <ScrollToTop />
+      <DemoBanner />
+      <DemoLockModal />
       <header className="app-nav">
         <div className="app-nav-inner">
           <span className="app-nav-brand">Production Monitoring</span>
