@@ -40,5 +40,27 @@ export function startWatchdog() {
       });
       console.warn(`[watchdog] marked ${machine.machineId} OFFLINE`);
     }
+
+    // Same idea for Protocol Gateways: a gateway that stopped heartbeating
+    // (see POST /admin/gateways/:id/heartbeat) is stale. The ONLINE edge is
+    // handled by the heartbeat route; this is the OFFLINE edge.
+    const gatewayCutoff = new Date(Date.now() - config.gatewayOfflineThresholdSec * 1000);
+    const staleGateways = await prisma.gateway.findMany({
+      where: {
+        status: { not: "OFFLINE" },
+        OR: [{ lastHeartbeatAt: null }, { lastHeartbeatAt: { lt: gatewayCutoff } }],
+      },
+    });
+    for (const gateway of staleGateways) {
+      await prisma.gateway.update({
+        where: { gatewayId: gateway.gatewayId },
+        data: { status: "OFFLINE" },
+      });
+      await logAudit("watchdog", "GATEWAY_OFFLINE_DETECTED", "gateway", gateway.gatewayId, {
+        previousStatus: gateway.status,
+        lastHeartbeatAt: gateway.lastHeartbeatAt,
+      });
+      console.warn(`[watchdog] marked gateway ${gateway.gatewayId} OFFLINE`);
+    }
   }, 5000);
 }

@@ -103,6 +103,60 @@ gatewaysRouter.delete("/admin/gateways/:id", async (req, res) => {
   res.status(204).end();
 });
 
+// Atomic "create with this exact id if new, otherwise just touch ip/location"
+// — the mock-gateway's own self-register on boot (see mock-gateway/src/index.ts),
+// the gateway counterpart to the simulator's ERP-asset bootstrap. Uses the
+// DB's unique constraint as the existence check so there's no GET-then-write
+// race. Unlike the CRUD create above, the caller supplies the id.
+const bootstrapGatewaySchema = z.object({
+  ipAddress: z.string().min(1),
+  location: z.string().min(1),
+});
+
+gatewaysRouter.post("/admin/gateways/:id/bootstrap", async (req, res) => {
+  const parsed = bootstrapGatewaySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const gatewayId = req.params.id;
+  try {
+    const gateway = await prisma.gateway.create({ data: { gatewayId, ...parsed.data } });
+    await logAudit("gateway", "GATEWAY_BOOTSTRAPPED", "gateway", gatewayId, parsed.data);
+    res.status(201).json(serialiseGateway(gateway));
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      const gateway = await prisma.gateway.update({ where: { gatewayId }, data: parsed.data });
+      res.json(serialiseGateway(gateway));
+      return;
+    }
+    throw err;
+  }
+});
+
+// Liveness ping from the gateway itself. Stamps the heartbeat and, on the
+// OFFLINE -> ONLINE edge only, flips status + writes one audit line (so a
+// gateway pinging every few seconds doesn't flood the audit log). The
+// watchdog does the reverse edge — see watchdog.ts.
+gatewaysRouter.post("/admin/gateways/:id/heartbeat", async (req, res) => {
+  const existing = await prisma.gateway.findUnique({ where: { gatewayId: req.params.id } });
+  if (!existing) {
+    res.status(404).json({ error: `gateway ${req.params.id} not found` });
+    return;
+  }
+  const cameOnline = existing.status !== "ONLINE";
+  const gateway = await prisma.gateway.update({
+    where: { gatewayId: req.params.id },
+    data: { lastHeartbeatAt: new Date(), status: "ONLINE" },
+  });
+  if (cameOnline) {
+    await logAudit("gateway", "GATEWAY_ONLINE", "gateway", gateway.gatewayId, {
+      previousStatus: existing.status,
+    });
+  }
+  res.json(serialiseGateway(gateway));
+});
+
 gatewaysRouter.get("/admin/gateways/:id/machines", async (req, res) => {
   const gateway = await prisma.gateway.findUnique({ where: { gatewayId: req.params.id } });
   if (!gateway) {

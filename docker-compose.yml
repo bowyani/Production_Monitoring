@@ -33,6 +33,7 @@ services:
       MQTT_BROKER_URL: mqtt://mosquitto:1883
       BACKEND_PORT: 3000
       BACKEND_WATCHDOG_OFFLINE_THRESHOLD_SEC: ${BACKEND_WATCHDOG_OFFLINE_THRESHOLD_SEC}
+      BACKEND_GATEWAY_OFFLINE_THRESHOLD_SEC: ${BACKEND_GATEWAY_OFFLINE_THRESHOLD_SEC}
       # Lets Admin add/activate/deactivate a machine by controlling its
       # simulator container directly — see backend/src/docker/simulatorManager.ts.
       # Prototype-only convenience: a real PLC isn't a container we can start/stop.
@@ -110,6 +111,27 @@ services:
     labels:
       production-monitoring.role: simulator
       production-monitoring.machineId: IMM-03
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # Mock Protocol Gateway — the PLC -> Modbus -> Gateway -> MQTT path the bare
+  # simulators skip (see README "ตัวกลางที่ต้องเพิ่มเข้ามา: Protocol Gateway").
+  # Registers itself as a Gateway, self-seeds two Modbus-backed demo machines
+  # (IMM-51/52) bound to it, then polls + republishes their telemetry on the
+  # same MQTT topics the simulators use. Not backend-managed (no
+  # production-monitoring.machineId label) — a real gateway is a box on the
+  # floor, not a container Admin starts/stops.
+  mock-gateway:
+    build: ./mock-gateway
+    environment:
+      GATEWAY_ID: GW-01
+      GATEWAY_IP: 192.168.10.2
+      GATEWAY_LOCATION: Building A - Line 1
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      BACKEND_API_URL: http://backend:3000/api/v1
+      SEED_DEMO_MACHINES: "true"
+      DEMO_MACHINE_IDS: IMM-51,IMM-52
     depends_on:
       backend:
         condition: service_healthy

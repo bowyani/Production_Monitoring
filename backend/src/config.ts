@@ -4,6 +4,11 @@ export const config = {
   watchdogOfflineThresholdSec: Number(
     process.env.BACKEND_WATCHDOG_OFFLINE_THRESHOLD_SEC ?? 15
   ),
+  // A gateway heartbeats less often than a machine publishes telemetry, so it
+  // gets its own, looser staleness window before the watchdog marks it OFFLINE.
+  gatewayOfflineThresholdSec: Number(
+    process.env.BACKEND_GATEWAY_OFFLINE_THRESHOLD_SEC ?? 30
+  ),
   // Best-effort container control for the simulator fleet — lets Admin
   // add/activate/deactivate a machine without a manual `docker compose run`.
   // Only meaningful when the backend itself runs in Docker with the host
