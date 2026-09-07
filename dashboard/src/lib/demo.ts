@@ -8,7 +8,7 @@ export const MOCK = import.meta.env.VITE_MOCK === "true";
 export const DEMO_MODE = MOCK || import.meta.env.VITE_DEMO_MODE === "true";
 
 export const REPO_URL =
-  import.meta.env.VITE_REPO_URL ?? "https://github.com/your-username/production-monitoring";
+  import.meta.env.VITE_REPO_URL ?? "https://github.com/bowyani/Production_Monitoring";
 
 // Where the "run it yourself" instructions send people. On the static mock
 // that's the main branch, which carries the full stack.

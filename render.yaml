@@ -22,10 +22,10 @@ services:
       - key: VITE_MOCK
         value: "true"
       - key: VITE_REPO_URL
-        value: https://github.com/your-username/production-monitoring
+        value: https://github.com/bowyani/Production_Monitoring
       # Where the "run it locally" dialog sends people. Point at main.
       - key: VITE_MAIN_BRANCH_URL
-        value: https://github.com/your-username/production-monitoring/tree/main
+        value: https://github.com/bowyani/Production_Monitoring/tree/main
     routes:
       # SPA fallback so deep links (/kpi, /admin, ...) resolve to index.html
       - type: rewrite

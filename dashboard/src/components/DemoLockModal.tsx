@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { DEMO_MODE, MOCK, REPO_URL, MAIN_BRANCH_URL } from "../lib/demo";
 
 const CLONE_CMD = `git clone ${REPO_URL}
-cd production-monitoring
+cd Production_Monitoring
 cp .env.example .env
 docker compose up --build`;
 
